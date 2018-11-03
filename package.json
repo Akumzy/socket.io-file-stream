@@ -8,10 +8,22 @@
         "watch": "tsc -w",
         "build": "tsc"
     },
-    "author": "",
-    "license": "ISC",
+    "author": "Akuma Isaac Akuma <akumaisaacakuma@gmail.com>",
+    "license": "MIT",
     "devDependencies": {
         "@types/node": "^10.12.0",
         "socket.io": "^2.1.1"
-    }
+    },
+    "directories": {
+        "test": "test"
+    },
+    "dependencies": {},
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Akumzy/socket.io-file-stream.git"
+    },
+    "bugs": {
+        "url": "https://github.com/Akumzy/socket.io-file-stream/issues"
+    },
+    "homepage": "https://github.com/Akumzy/socket.io-file-stream#readme"
 }
