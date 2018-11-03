@@ -1,0 +1,17 @@
+{
+    "name": "socket.io-file-stream",
+    "version": "0.0.1",
+    "description": "",
+    "main": "./dist/src/index.js",
+    "scripts": {
+        "test": "node ./test/client.js",
+        "watch": "tsc -w",
+        "build": "tsc"
+    },
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@types/node": "^10.12.0",
+        "socket.io": "^2.1.1"
+    }
+}
