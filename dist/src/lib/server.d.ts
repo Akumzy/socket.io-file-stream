@@ -1,14 +1,15 @@
 import { socket } from "./interface";
 declare class Server {
     sockets: Map<any, any>;
-    listening: boolean;
     handlers: Map<any, any>;
-    io: socket | null;
+    io: socket;
+    cleaner: any;
+    constructor(io: socket);
     /**
      *
      */
-    on(io: socket, event: string, handler: (...data: any[]) => {}): void;
-    listeners(io: socket, id: string, event: string): void;
+    on(event: string, handler: (...data: any[]) => {}): void;
+    private __listener;
+    private __cleaner;
 }
-declare const _default: Server;
-export default _default;
+export default Server;

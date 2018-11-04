@@ -1,65 +1,103 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const uuid_1 = require("./uuid");
+const stream_1 = require("stream");
 class Server {
-    constructor() {
+    constructor(io) {
         this.sockets = new Map();
-        this.listening = false;
         this.handlers = new Map();
-        this.io = null;
+        this.io = io;
+        //create id
+        this.io.on("__akuma_::new::id__", (ack) => {
+            let id = uuid_1.uuid();
+            while (this.sockets.has(id)) {
+                id = uuid_1.uuid();
+            }
+            ack(id);
+            this.__listener(id);
+            this.__cleaner();
+        });
+        //resume
+        this.io.on(`__akuma_::resume::__`, (id) => {
+            //on resume check is this id instance still available
+            //then return the total transfered buffer else
+            //return nothing
+            if (this.sockets.has(id)) {
+                let d = this.sockets.get(id);
+                this.io.emit(`__akuma_::resume::${id}__`, d.chunks);
+            }
+            else {
+                this.io.emit(`__akuma_::resume::${id}__`);
+            }
+        });
     }
     /**
      *
      */
-    on(io, event, handler) {
-        if (!this.listening) {
-            this.listening = true;
-            io.on("__akuma_::new::id__", (_event, ack) => {
-                let id = uuid_1.uuid();
-                while (this.sockets.has(id)) {
-                    id = uuid_1.uuid();
-                }
-                ack(id);
-                this.listeners(io, id, _event);
-            });
-        }
+    on(event, handler) {
+        if (typeof event !== "string")
+            throw new Error(`${event} must be typeof string`);
         if (!this.handlers.has(event)) {
             this.handlers.set(event, handler);
         }
     }
-    listeners(io, id, event) {
-        this.sockets.set(id, { event, chunks: 0, paused: false });
-        io.on(`__akuma_::data::${id}__`, ({ chunk, data, event }, ack) => {
-            let d = this.sockets.get(id), chunks = d.chunks + chunk.length, handler = this.handlers.get(event);
-            d = Object.assign({}, d, { chunks });
-            this.sockets.set(id, d);
-            //subscribers
-            handler({ chunk, data }, ack);
+    __listener(id) {
+        const stream = new stream_1.Readable();
+        this.io.on(`__akuma_::data::${id}__`, ({ chunk, data, event }) => {
+            let d = this.sockets.get(id), chunks;
+            if (d) {
+                chunks = d.chunks + chunk.length;
+                d = Object.assign({}, d, { chunks, expire: new Date(d.expire).setSeconds(30) });
+                this.sockets.set(id, d);
+            }
+            else {
+                this.sockets.set(id, {
+                    event,
+                    chunks: chunk.length,
+                    paused: false,
+                    expire: new Date().setHours(1)
+                });
+                chunks = chunk.length;
+            }
+            let handler = this.handlers.get(event);
+            stream.push(chunk);
+            //subscriber
+            handler({ stream, data }, () => { });
             /**
              * Check if transfered buffers are equal to
              * file size then emit end else request for more
              */
             if (!(chunks >= data.size)) {
-                io.emit(`__akuma_::more::${id}__`, chunks);
+                this.io.emit(`__akuma_::more::${id}__`, chunks);
             }
             else {
-                io.emit(`__akuma_::end::${id}__`, this.sockets.get(id).chunks);
+                stream.push(null);
+                //last
+                let payload;
+                handler({ stream, data }, (...ack) => {
+                    payload = ack;
+                });
+                this.io.emit(`__akuma_::end::${id}__`, {
+                    total: this.sockets.get(id).chunks,
+                    payload
+                });
                 this.sockets.delete(id);
             }
         });
-        io.on(`__akuma_::resume::__`, (id) => {
-            console.log({ id });
-            //on resume check is this id instance still available
-            //then return the total transfered buffer else
-            //return nothing
-            console.log(this.sockets.has(id));
-            // if (this.sockets.has(id)) {
-            //   let d = this.sockets.get(id);
-            //   io.emit(`__akuma_::resume::${id}__`, d.chunks);
-            // } else {
-            //   io.emit(`__akuma_::resume::${id}__`);
-            // }
-        });
+    }
+    __cleaner() {
+        this.cleaner = setInterval(() => {
+            let s = this.sockets.size;
+            if (s) {
+                this.sockets.forEach(val => {
+                    if (val.expire <= Date.now())
+                        this.sockets.delete(val.id);
+                });
+            }
+            else {
+                clearInterval(this.cleaner);
+            }
+        }, 10000);
     }
 }
-exports.default = new Server();
+exports.default = Server;
