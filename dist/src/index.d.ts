@@ -1,11 +1,10 @@
-import client from "./lib/client";
+import Client from "./lib/client";
 import Server from "./lib/server";
-import clientWeb from "./lib/client-web";
-declare let Client: typeof client | typeof clientWeb;
-export { Client, Server };
+import ClientWeb from "./lib/client-web";
+export { Client, Server, ClientWeb };
 declare const _default: {
-    Client: typeof client | typeof clientWeb;
+    Client: typeof Client;
     Server: typeof Server;
-    Web: typeof clientWeb;
+    ClientWeb: typeof ClientWeb;
 };
 export default _default;

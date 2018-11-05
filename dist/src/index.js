@@ -4,15 +4,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const client_1 = __importDefault(require("./lib/client"));
+exports.Client = client_1.default;
 const server_1 = __importDefault(require("./lib/server"));
 exports.Server = server_1.default;
 const client_web_1 = __importDefault(require("./lib/client-web"));
-let Client = isNodejs ? client_1.default : client_web_1.default;
-exports.Client = Client;
-function isNodejs() {
-    return (typeof "process" !== "undefined" &&
-        process &&
-        process.versions &&
-        process.versions.node);
-}
-exports.default = { Client, Server: server_1.default, Web: client_web_1.default };
+exports.ClientWeb = client_web_1.default;
+exports.default = { Client: client_1.default, Server: server_1.default, ClientWeb: client_web_1.default };
