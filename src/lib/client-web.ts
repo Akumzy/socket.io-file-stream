@@ -1,10 +1,3 @@
-import { createReadStream, statSync, existsSync } from "fs";
-import { EventEmitter } from "events";
-interface options {
-  filepath: string;
-  data?: any;
-  highWaterMark?: number;
-}
 interface socket {
   emit: (event: string, ...arg: any) => socket;
   on: (event: string, ...arg: any) => socket;
@@ -15,19 +8,26 @@ interface socket {
 interface cb {
   (...data: any): void;
 }
-class Client extends EventEmitter {
+interface options {
+  file: File;
+  data?: any;
+  highWaterMark?: number;
+}
+class ClientWeb {
   filesize: number = 0;
   chunks: number = 0;
   id: string | null = null;
   bytesPerChunk: number = 100e3; //100 kb
-  filepath: string;
+  file: File;
   data: any;
   isPaused: boolean = false;
   socket: socket;
   event: string = "";
-  constructor(socket: socket, { filepath, data, highWaterMark }: options) {
-    super();
-    this.filepath = filepath;
+  events: Map<string, cb[]> = new Map();
+  fileReader: FileReader = new FileReader();
+  constructor(socket: socket, { file, data, highWaterMark }: options) {
+    this.file = file;
+    this.filesize = file.size;
     this.socket = socket;
     this.data = data;
     this.bytesPerChunk = highWaterMark || this.bytesPerChunk;
@@ -39,29 +39,25 @@ class Client extends EventEmitter {
       this.emit("ready");
     });
   }
+
   __read(start: number, end: number) {
     if (this.isPaused) return;
-    const stream = createReadStream(this.filepath, {
-      highWaterMark: this.bytesPerChunk,
-      start,
-      end
-    });
-    stream.read(end - start);
-    stream.once("data", (chunk: Buffer) => {
+    const slice = this.file.slice(start, end);
+    this.fileReader.readAsArrayBuffer(slice);
+
+    this.fileReader.onload = () => {
       this.socket.emit(`__akuma_::data::${this.id}__`, {
-        chunk,
+        chunk: this.fileReader.result,
         data: {
           size: this.filesize,
           data: this.data
         },
         event: this.event
       });
-      stream.close();
       this.emit("progress", { size: this.filesize, total: this.chunks });
-    });
+    };
   }
   __start(cb: cb) {
-    this.filesize = statSync(this.filepath).size;
     this.__read(0, this.bytesPerChunk);
     this.socket
       .on(`__akuma_::more::${this.id}__`, (chunks: number) => {
@@ -87,35 +83,44 @@ class Client extends EventEmitter {
   }
   upload(event: string, cb: cb) {
     this.event = event;
-    if (typeof this.filepath === "string") {
-      if (existsSync(this.filepath)) {
-        if (this.id) this.__start(cb);
-        else {
-          this.__getId();
-          let whenToAbort = new Date().setMinutes(1),
-            timer = setInterval(() => {
-              if (this.id) clearInterval(timer);
-              else {
-                this.__getId();
-                if (Date.now() >= whenToAbort) {
-                  this.destroy();
-                  this.emit("cancel");
-                }
-              }
-            }, 5000);
-          this.once("ready", () => {
-            clearInterval(timer);
-            this.__start(cb);
-          });
-        }
-      } else {
-        throw new Error(`${this.filepath} does not exist.`);
-      }
-    } else {
-      throw new Error(`${this.filepath} must be typeof string.`);
+    if (this.id) this.__start(cb);
+    else {
+      this.__getId();
+      let whenToAbort = new Date().setMinutes(1),
+        timer = setInterval(() => {
+          if (this.id) clearInterval(timer);
+          else {
+            this.__getId();
+            if (Date.now() >= whenToAbort) {
+              this.destroy();
+              this.emit("cancel");
+            }
+          }
+        }, 5000);
+      this.on("ready", () => {
+        clearInterval(timer);
+        this.__start(cb);
+      });
     }
 
     return this;
+  }
+  on(eventName: string, cb: cb) {
+    if (!this.events.get(eventName)) {
+      this.events.set(eventName, [cb]);
+    } else {
+      let e = this.events.get(eventName);
+      //@ts-ignore
+      e.push(cb);
+    }
+  }
+  emit(eventName: string, data?: any) {
+    const event = this.events.get(eventName);
+    if (event) {
+      event.forEach(cb => {
+        cb.call(null, data);
+      });
+    }
   }
   pause() {
     this.isPaused = true;
@@ -132,8 +137,9 @@ class Client extends EventEmitter {
     this.socket.off(`__akuma_::data::${this.id}__`, () => {});
     this.socket.off(`__akuma_::resume::${this.id}__`, () => {});
     this.socket.off(`__akuma_::end::${this.id}__`, () => {});
+    this.events.clear();
     this.data = null;
     this.id = null;
   }
 }
-export default Client;
+export default ClientWeb;

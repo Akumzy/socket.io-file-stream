@@ -1,17 +1,17 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const fs_1 = require("fs");
-const events_1 = require("events");
-class Client extends events_1.EventEmitter {
-    constructor(socket, { filepath, data, highWaterMark }) {
-        super();
+class ClientWeb {
+    constructor(socket, { file, data, highWaterMark }) {
         this.filesize = 0;
         this.chunks = 0;
         this.id = null;
         this.bytesPerChunk = 100e3;
         this.isPaused = false;
         this.event = "";
-        this.filepath = filepath;
+        this.events = new Map();
+        this.fileReader = new FileReader();
+        this.file = file;
+        this.filesize = file.size;
         this.socket = socket;
         this.data = data;
         this.bytesPerChunk = highWaterMark || this.bytesPerChunk;
@@ -27,27 +27,21 @@ class Client extends events_1.EventEmitter {
     __read(start, end) {
         if (this.isPaused)
             return;
-        const stream = fs_1.createReadStream(this.filepath, {
-            highWaterMark: this.bytesPerChunk,
-            start,
-            end
-        });
-        stream.read(end - start);
-        stream.once("data", (chunk) => {
+        const slice = this.file.slice(start, end);
+        this.fileReader.readAsArrayBuffer(slice);
+        this.fileReader.onload = () => {
             this.socket.emit(`__akuma_::data::${this.id}__`, {
-                chunk,
+                chunk: this.fileReader.result,
                 data: {
                     size: this.filesize,
                     data: this.data
                 },
                 event: this.event
             });
-            stream.close();
             this.emit("progress", { size: this.filesize, total: this.chunks });
-        });
+        };
     }
     __start(cb) {
-        this.filesize = fs_1.statSync(this.filepath).size;
         this.__read(0, this.bytesPerChunk);
         this.socket
             .on(`__akuma_::more::${this.id}__`, (chunks) => {
@@ -77,37 +71,44 @@ class Client extends events_1.EventEmitter {
     }
     upload(event, cb) {
         this.event = event;
-        if (typeof this.filepath === "string") {
-            if (fs_1.existsSync(this.filepath)) {
+        if (this.id)
+            this.__start(cb);
+        else {
+            this.__getId();
+            let whenToAbort = new Date().setMinutes(1), timer = setInterval(() => {
                 if (this.id)
-                    this.__start(cb);
+                    clearInterval(timer);
                 else {
                     this.__getId();
-                    let whenToAbort = new Date().setMinutes(1), timer = setInterval(() => {
-                        if (this.id)
-                            clearInterval(timer);
-                        else {
-                            this.__getId();
-                            if (Date.now() >= whenToAbort) {
-                                this.destroy();
-                                this.emit("cancel");
-                            }
-                        }
-                    }, 5000);
-                    this.once("ready", () => {
-                        clearInterval(timer);
-                        this.__start(cb);
-                    });
+                    if (Date.now() >= whenToAbort) {
+                        this.destroy();
+                        this.emit("cancel");
+                    }
                 }
-            }
-            else {
-                throw new Error(`${this.filepath} does not exist.`);
-            }
-        }
-        else {
-            throw new Error(`${this.filepath} must be typeof string.`);
+            }, 5000);
+            this.on("ready", () => {
+                clearInterval(timer);
+                this.__start(cb);
+            });
         }
         return this;
+    }
+    on(eventName, cb) {
+        if (!this.events.get(eventName)) {
+            this.events.set(eventName, [cb]);
+        }
+        else {
+            let e = this.events.get(eventName);
+            e.push(cb);
+        }
+    }
+    emit(eventName, data) {
+        const event = this.events.get(eventName);
+        if (event) {
+            event.forEach(cb => {
+                cb.call(null, data);
+            });
+        }
     }
     pause() {
         this.isPaused = true;
@@ -125,8 +126,9 @@ class Client extends events_1.EventEmitter {
         this.socket.off(`__akuma_::data::${this.id}__`, () => { });
         this.socket.off(`__akuma_::resume::${this.id}__`, () => { });
         this.socket.off(`__akuma_::end::${this.id}__`, () => { });
+        this.events.clear();
         this.data = null;
         this.id = null;
     }
 }
-exports.default = Client;
+exports.default = ClientWeb;

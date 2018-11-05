@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Socket.io-file-stream</title>
+</head>
+
+<body>
+    <div>
+        <label for="upload">Upload file:</label>
+        <input type="file" name="upload" id="upload" onchange="onChange(this)">
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.1.1/socket.io.js"></script>
+    <script src="web.js"></script>
+    <script>
+        const socket = io('http://localhost:8090')
+        socket.on('connect', () => {
+            console.log('connected');
+        })
+
+        function onChange(e) {
+            let file = e.files[0]
+            console.log(file);
+            const client = new ClientWeb(socket, {
+                file,
+                data: {
+                    name: file.name
+                }
+            })
+            client.upload('file-upload', data => {
+                    console.log({
+                            data
+                        }) //{ data: { size: 783, total: 783, payload: [ 'good' ] } }
+                })
+                .on('progress', c => {
+                    console.log(c) // { size: 783, total: 783 }
+                    console.log(`${(c.total / c.size) * 100}%`)
+                })
+                .on('done', data => {
+                    console.log(data) // { size: 783, total: 783, payload: [ 'good' ] }
+                })
+                .on('pause', () => {
+                    console.log('pause')
+                })
+                .on('cancel', () => {
+                    console.log('canceled')
+                })
+            setTimeout(() => {
+                client.pause()
+            }, 200)
+            setTimeout(() => {
+                client.resume()
+            }, 1000)
+        }
+    </script>
+</body>
+
+</html>

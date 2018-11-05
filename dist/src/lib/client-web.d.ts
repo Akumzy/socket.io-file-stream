@@ -1,10 +1,3 @@
-/// <reference types="node" />
-import { EventEmitter } from "events";
-interface options {
-    filepath: string;
-    data?: any;
-    highWaterMark?: number;
-}
 interface socket {
     emit: (event: string, ...arg: any) => socket;
     on: (event: string, ...arg: any) => socket;
@@ -14,23 +7,32 @@ interface socket {
 interface cb {
     (...data: any): void;
 }
-declare class Client extends EventEmitter {
+interface options {
+    file: File;
+    data?: any;
+    highWaterMark?: number;
+}
+declare class ClientWeb {
     filesize: number;
     chunks: number;
     id: string | null;
     bytesPerChunk: number;
-    filepath: string;
+    file: File;
     data: any;
     isPaused: boolean;
     socket: socket;
     event: string;
-    constructor(socket: socket, { filepath, data, highWaterMark }: options);
+    events: Map<string, cb[]>;
+    fileReader: FileReader;
+    constructor(socket: socket, { file, data, highWaterMark }: options);
     __getId(): void;
     __read(start: number, end: number): void;
     __start(cb: cb): void;
     upload(event: string, cb: cb): this;
+    on(eventName: string, cb: cb): void;
+    emit(eventName: string, data?: any): void;
     pause(): void;
     resume(): void;
     destroy(): void;
 }
-export default Client;
+export default ClientWeb;

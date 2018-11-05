@@ -1,6 +1,16 @@
-import { socket, cb } from "./interface";
 import { uuid } from "./uuid";
 import { Readable } from "stream";
+
+interface socket {
+  emit: (event: string, ...arg: any) => socket;
+  on: (event: string, ...arg: any) => socket;
+  once: (event: string, ...arg: any) => socket;
+  off: (event: string, listener: () => void) => void;
+}
+
+interface cb {
+  (...data: any): void;
+}
 class Server {
   sockets = new Map();
   handlers = new Map();
@@ -43,7 +53,9 @@ class Server {
   }
   private __listener(id: string) {
     const stream = new Readable();
+    stream._read = () => {};
     this.io.on(`__akuma_::data::${id}__`, ({ chunk, data, event }: any) => {
+      if (!this.cleaner) this.cleaner();
       let d = this.sockets.get(id),
         chunks;
       if (d) {
@@ -55,14 +67,28 @@ class Server {
           event,
           chunks: chunk.length,
           paused: false,
+          piped: false,
           expire: new Date().setHours(1)
         });
         chunks = chunk.length;
       }
       let handler = this.handlers.get(event);
+
       stream.push(chunk);
       //subscriber
-      handler({ stream, data }, () => {});
+      let c = this.sockets.get(id);
+      if (!c.piped) {
+        handler({ stream, data }, (...ack: []) => {
+          //once done close
+          this.io.emit(`__akuma_::end::${id}__`, {
+            total: this.sockets.get(id).chunks,
+            payload: ack
+          });
+          this.sockets.delete(id);
+        });
+        c.piped = true;
+        this.sockets.set(id, c);
+      }
 
       /**
        * Check if transfered buffers are equal to
@@ -72,16 +98,6 @@ class Server {
         this.io.emit(`__akuma_::more::${id}__`, chunks);
       } else {
         stream.push(null);
-        //last
-        let payload;
-        handler({ stream, data }, (...ack: any[]) => {
-          payload = ack;
-        });
-        this.io.emit(`__akuma_::end::${id}__`, {
-          total: this.sockets.get(id).chunks,
-          payload
-        });
-        this.sockets.delete(id);
       }
     });
   }
@@ -94,6 +110,7 @@ class Server {
         });
       } else {
         clearInterval(this.cleaner);
+        this.cleaner = null;
       }
     }, 10000);
   }
