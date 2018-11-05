@@ -1,15 +1,6 @@
-import client from "./lib/client";
+import Client from "./lib/client";
 import Server from "./lib/server";
-import clientWeb from "./lib/client-web";
-let Client = isNodejs ? client : clientWeb;
+import ClientWeb from "./lib/client-web";
 
-function isNodejs() {
-  return (
-    typeof "process" !== "undefined" &&
-    process &&
-    process.versions &&
-    process.versions.node
-  );
-}
-export { Client, Server };
-export default { Client, Server, Web: clientWeb };
+export { Client, Server, ClientWeb };
+export default { Client, Server, ClientWeb };

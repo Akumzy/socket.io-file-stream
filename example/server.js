@@ -7,7 +7,7 @@ io.on('connection', socket => {
 
     server.on('file-upload', ({ stream, data }, done) => {
         console.log('stream');
-        const writable = new createWriteStream(data.data.name, {
+        const writable = createWriteStream(data.data.name, {
             autoClose: true
         })
         stream.pipe(writable)
