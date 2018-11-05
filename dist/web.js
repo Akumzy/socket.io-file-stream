@@ -3,7 +3,7 @@ class ClientWeb {
         this.filesize = 0;
         this.chunks = 0;
         this.id = null;
-        this.bytesPerChunk = 100e3; //100 kb
+        this.bytesPerChunk = 100e3;
         this.isPaused = false;
         this.event = "";
         this.events = new Map();
@@ -28,13 +28,11 @@ class ClientWeb {
         const slice = this.file.slice(start, end);
         this.fileReader.readAsArrayBuffer(slice);
         this.fileReader.onload = () => {
-            console.log(this.fileReader.result);
             this.socket.emit(`__akuma_::data::${this.id}__`, {
                 chunk: this.fileReader.result,
                 data: {
                     size: this.filesize,
-                    data: this.data,
-                    web: true,
+                    data: this.data
                 },
                 event: this.event
             });
@@ -98,7 +96,6 @@ class ClientWeb {
             this.events.set(eventName, [cb]);
         } else {
             let e = this.events.get(eventName);
-            //@ts-ignore
             e.push(cb);
         }
     }
