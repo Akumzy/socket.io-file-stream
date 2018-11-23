@@ -82,7 +82,7 @@ class Client extends EventEmitter {
         let data = { size: this.filesize, total, payload };
         this.emit("done", data);
         if (typeof cb === "function") cb(data);
-        this.destroy();
+        this.__destroy();
       });
   }
   upload(event: string, cb: cb) {
@@ -98,7 +98,7 @@ class Client extends EventEmitter {
               else {
                 this.__getId();
                 if (Date.now() >= whenToAbort) {
-                  this.destroy();
+                  this.__destroy();
                   this.emit("cancel");
                 }
               }
@@ -127,7 +127,12 @@ class Client extends EventEmitter {
     this.emit("resume");
     this.socket.emit(`__akuma_::resume::__`, this.id);
   }
-  destroy() {
+  stop() {
+    this.socket.emit(`__akuma_::stop::__`, this.id);
+    this.__destroy();
+    this.emit("cancel");
+  }
+  __destroy() {
     this.socket.off(`__akuma_::more::${this.id}__`, () => {});
     this.socket.off(`__akuma_::data::${this.id}__`, () => {});
     this.socket.off(`__akuma_::resume::${this.id}__`, () => {});

@@ -31,6 +31,7 @@ declare class Client extends EventEmitter {
     upload(event: string, cb: cb): this;
     pause(): void;
     resume(): void;
-    destroy(): void;
+    stop(): void;
+    __destroy(): void;
 }
 export default Client;

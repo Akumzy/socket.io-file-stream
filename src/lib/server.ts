@@ -100,6 +100,14 @@ class Server {
         stream.push(null);
       }
     });
+
+    this.io.on(`__akuma_::stop::__`, (id: string) => {
+      //close the stream
+      if (this.sockets.has(id)) {
+        stream.push(null);
+        this.sockets.delete(id);
+      }
+    });
   }
   private __cleaner() {
     this.cleaner = setInterval(() => {

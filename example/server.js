@@ -1,11 +1,11 @@
 const io = require('socket.io')(8090),
     Server = require('../dist/src').Server,
-    { createWriteStream } = require('fs')
+    { createWriteStream, statSync } = require('fs')
 io.on('connection', socket => {
     console.log('hurrey')
     const server = new Server(socket)
 
-    server.on('file-upload', ({ stream, data }, done) => {
+    server.on('file-upload', ({ stream, data, size }, done) => {
         console.log('stream');
         const writable = createWriteStream(data.data.name, {
             autoClose: true
@@ -16,8 +16,11 @@ io.on('connection', socket => {
             //only when you're done you can
             //pass a value to it which will be 
             //sent back to client as well
-            done('good')
-        })
+            if (statSync(data.data.name).size >= size) {
+                done('good')
+            }
 
+        })
+        server
     })
 })

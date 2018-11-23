@@ -76,6 +76,12 @@ class Server {
                 stream.push(null);
             }
         });
+        this.io.on(`__akuma_::stop::__`, (id) => {
+            if (this.sockets.has(id)) {
+                stream.push(null);
+                this.sockets.delete(id);
+            }
+        });
     }
     __cleaner() {
         this.cleaner = setInterval(() => {

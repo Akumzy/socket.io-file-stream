@@ -33,6 +33,7 @@ declare class ClientWeb {
     emit(eventName: string, data?: any): void;
     pause(): void;
     resume(): void;
-    destroy(): void;
+    stop(): void;
+    __destroy(): void;
 }
 export default ClientWeb;
