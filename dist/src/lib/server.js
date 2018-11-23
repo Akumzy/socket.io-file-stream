@@ -38,7 +38,7 @@ class Server {
         stream._read = () => { };
         this.io.on(`__akuma_::data::${id}__`, ({ chunk, data, event }) => {
             if (!this.cleaner)
-                this.cleaner();
+                this.__cleaner();
             let d = this.sockets.get(id), chunks;
             if (d) {
                 chunks = d.chunks + chunk.length;

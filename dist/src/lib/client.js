@@ -123,6 +123,7 @@ class Client extends events_1.EventEmitter {
     stop() {
         this.socket.emit(`__akuma_::stop::__`, this.id);
         this.__destroy();
+        this.emit("cancel");
     }
     __destroy() {
         this.socket.off(`__akuma_::more::${this.id}__`, () => { });

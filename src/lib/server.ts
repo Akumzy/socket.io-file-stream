@@ -55,7 +55,7 @@ class Server {
     const stream = new Readable();
     stream._read = () => {};
     this.io.on(`__akuma_::data::${id}__`, ({ chunk, data, event }: any) => {
-      if (!this.cleaner) this.cleaner();
+      if (!this.cleaner) this.__cleaner();
       let d = this.sockets.get(id),
         chunks;
       if (d) {
