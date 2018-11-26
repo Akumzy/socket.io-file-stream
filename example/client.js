@@ -24,15 +24,15 @@ const client = new Client(io, {
 // })
 client
 	.upload('file-upload', data => {
-		console.log(data) //{ data: { size: 783, total: 783, payload: [ 'good' ] } }
+		console.log(data) // 'good'}
 	})
 	.on('progress', c => {
 		// console.log(c) // { size: 783, total: 783 }
 		console.log(`${(c.total / c.size) * 100}%`)
 	})
-	// .on('done', data => {
-	// 	console.log(data) // { size: 783, total: 783, payload: [ 'good' ] }
-	// })
+	.on('done', data => {
+		console.log(data) // { size: 783, total: 783, payload: [ 'good' ] }
+	})
 	// .on('pause', () => {
 	// 	console.log('pause')
 	// })

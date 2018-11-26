@@ -17,85 +17,86 @@ This package has three components
 
 ```js
 //Client
-import {Client} from 'socket.io-file-stream'
+import { Client } from 'socket.io-file-stream'
 
 const client = new Client(socket, {
-  filepath: '/path/to/file/music.mp3',
-  data: {
-    name: 'music.mp3'
-  }
+	filepath: '/path/to/file/music.mp3',
+	data: {
+		//you pass your own data here
+		name: 'music.mp3'
+	}
 })
 
 client
-  .upload('file-upload', data => {
-    console.log({data})
-  })
-  .on('progress', c => {
-    console.log(c) //{total,size}
-  })
-  .on('done', data => {
-    console.log(data)
-  })
-  .on('pause', () => {
-    console.log('pause')
-  })
-  .on('cancel', () => {
-    console.log('canceled')
-  })
+	.upload('file-upload', data => {
+		console.log({ data })
+	})
+	.on('progress', c => {
+		console.log(c) //{total,size}
+	})
+	.on('done', data => {
+		console.log(data)
+	})
+	.on('pause', () => {
+		console.log('pause')
+	})
+	.on('cancel', () => {
+		console.log('canceled')
+	})
 ```
 
 ```js
 //Web
 
 function onChange(inputElement) {
-  let file = inputElement.files[0]
+	let file = inputElement.files[0]
 
-  const client = new Web(socket, {
-    file: file,
-    data: {
-      name: file.name
-    }
-  })
-  client
-    .upload('file-upload', data => {
-      console.log({data})
-    })
-    .on('progress', c => {
-      console.log(c) //{total,size}
-    })
-    .on('done', data => {
-      console.log(data)
-    })
-    .on('pause', () => {
-      console.log('pause')
-    })
-    .on('cancel', () => {
-      console.log('canceled')
-    })
+	const client = new Web(socket, {
+		file: file,
+		data: {
+			name: file.name
+		}
+	})
+	client
+		.upload('file-upload', data => {
+			console.log({ data })
+		})
+		.on('progress', c => {
+			console.log(c) //{total,size}
+		})
+		.on('done', data => {
+			console.log(data)
+		})
+		.on('pause', () => {
+			console.log('pause')
+		})
+		.on('cancel', () => {
+			console.log('canceled')
+		})
 }
 ```
 
 ```js
 //Server
-import {Server} from 'socket.io-file-stream'
+import { Server } from 'socket.io-file-stream'
 io.on('connection', socket => {
-  console.log('hurrey')
-  const server = new Server(socket)
+	console.log('hurrey')
+	const server = new Server(socket)
 
-  server.on('file-upload', ({stream, data: {data}}, done) => {
-    console.log('stream')
-    const writable = createWriteStream(data.name, {
-      autoClose: true
-    })
-    stream.pipe(writable)
-    writable.on('close', () => {
-      //make sure to call this function
-      //only when you're done, you can
-      //pass a value to it which will be
-      //sent back to client as well
-      done('good')
-    })
-  })
+	server.on('file-upload', ({ stream, data: { data } }, done) => {
+		console.log('stream')
+		const writable = createWriteStream(data.name, {
+			autoClose: true
+		})
+		stream.pipe(writable)
+		writable.on('close', () => {
+			//make sure to call this function
+			//only when you're done, you can
+			//pass a value to it which will be
+			//sent back to client as well
+			done('good')
+		})
+	})
 })
 ```
 
