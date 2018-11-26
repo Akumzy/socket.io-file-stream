@@ -1,9 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const fs_1 = require("fs");
 const events_1 = require("events");
+const fs_1 = require("fs");
 class Client extends events_1.EventEmitter {
-    constructor(socket, { filepath, data, highWaterMark }) {
+    constructor(socket, { filepath, data, highWaterMark, withStats = false }) {
         super();
         this.filesize = 0;
         this.chunks = 0;
@@ -15,6 +15,7 @@ class Client extends events_1.EventEmitter {
         this.socket = socket;
         this.data = data;
         this.bytesPerChunk = highWaterMark || this.bytesPerChunk;
+        this.withStats = withStats;
     }
     __getId() {
         this.socket.emit("__akuma_::new::id__", (id) => {
@@ -70,8 +71,12 @@ class Client extends events_1.EventEmitter {
             this.emit("progress", { size: this.filesize, total });
             let data = { size: this.filesize, total, payload };
             this.emit("done", data);
-            if (typeof cb === "function")
-                cb(data);
+            if (typeof cb === "function") {
+                if (this.withStats)
+                    cb(data);
+                else
+                    cb(...payload);
+            }
             this.__destroy();
         });
     }

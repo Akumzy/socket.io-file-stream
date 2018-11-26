@@ -11,6 +11,7 @@ interface options {
     file: File;
     data?: any;
     highWaterMark?: number;
+    withStats?: boolean;
 }
 declare class ClientWeb {
     filesize: number;
@@ -24,7 +25,8 @@ declare class ClientWeb {
     event: string;
     events: Map<string, cb[]>;
     fileReader: FileReader;
-    constructor(socket: socket, { file, data, highWaterMark }: options);
+    withStats: boolean;
+    constructor(socket: socket, { file, data, highWaterMark, withStats }: options);
     __getId(): void;
     __read(start: number, end: number): void;
     __start(cb: cb): void;

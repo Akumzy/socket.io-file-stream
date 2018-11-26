@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 class ClientWeb {
-    constructor(socket, { file, data, highWaterMark }) {
+    constructor(socket, { file, data, highWaterMark, withStats = false }) {
         this.filesize = 0;
         this.chunks = 0;
         this.id = null;
@@ -15,6 +15,7 @@ class ClientWeb {
         this.socket = socket;
         this.data = data;
         this.bytesPerChunk = highWaterMark || this.bytesPerChunk;
+        this.withStats = withStats;
     }
     __getId() {
         this.socket.emit("__akuma_::new::id__", (id) => {
@@ -64,8 +65,12 @@ class ClientWeb {
             this.emit("progress", { size: this.filesize, total });
             let data = { size: this.filesize, total, payload };
             this.emit("done", data);
-            if (typeof cb === "function")
-                cb(data);
+            if (typeof cb === "function") {
+                if (this.withStats)
+                    cb(data);
+                else
+                    cb(...payload);
+            }
             this.__destroy();
         });
     }

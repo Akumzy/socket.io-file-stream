@@ -24,7 +24,7 @@ const client = new Client(io, {
 // })
 client
 	.upload('file-upload', data => {
-		console.log({ data }) //{ data: { size: 783, total: 783, payload: [ 'good' ] } }
+		console.log(data) //{ data: { size: 783, total: 783, payload: [ 'good' ] } }
 	})
 	.on('progress', c => {
 		// console.log(c) // { size: 783, total: 783 }
@@ -42,6 +42,6 @@ client
 // setTimeout(() => {
 //     client.pause()
 // }, 200)
-setTimeout(() => {
-	client.stop()
-}, 1000)
+// setTimeout(() => {
+// 	client.stop()
+// }, 1000)

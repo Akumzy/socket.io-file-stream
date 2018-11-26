@@ -4,6 +4,7 @@ interface options {
     filepath: string;
     data?: any;
     highWaterMark?: number;
+    withStats?: boolean;
 }
 interface socket {
     emit: (event: string, ...arg: any) => socket;
@@ -24,7 +25,8 @@ declare class Client extends EventEmitter {
     isPaused: boolean;
     socket: socket;
     event: string;
-    constructor(socket: socket, { filepath, data, highWaterMark }: options);
+    withStats: boolean;
+    constructor(socket: socket, { filepath, data, highWaterMark, withStats }: options);
     __getId(): void;
     __read(start: number, end: number): void;
     __start(cb: cb): void;
