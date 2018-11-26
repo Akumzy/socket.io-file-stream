@@ -12,6 +12,7 @@ interface options {
   file: File;
   data?: any;
   highWaterMark?: number;
+  withStats?: boolean;
 }
 class ClientWeb {
   filesize: number = 0;
@@ -25,12 +26,17 @@ class ClientWeb {
   event: string = "";
   events: Map<string, cb[]> = new Map();
   fileReader: FileReader = new FileReader();
-  constructor(socket: socket, { file, data, highWaterMark }: options) {
+  withStats: boolean;
+  constructor(
+    socket: socket,
+    { file, data, highWaterMark, withStats = false }: options
+  ) {
     this.file = file;
     this.filesize = file.size;
     this.socket = socket;
     this.data = data;
     this.bytesPerChunk = highWaterMark || this.bytesPerChunk;
+    this.withStats = withStats;
   }
   __getId() {
     this.socket.emit("__akuma_::new::id__", (id: string) => {
@@ -77,7 +83,10 @@ class ClientWeb {
         this.emit("progress", { size: this.filesize, total });
         let data = { size: this.filesize, total, payload };
         this.emit("done", data);
-        if (typeof cb === "function") cb(data);
+        if (typeof cb === "function") {
+          if (this.withStats) cb(data);
+          else cb(...payload);
+        }
         this.__destroy();
       });
   }

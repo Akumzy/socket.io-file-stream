@@ -1,9 +1,10 @@
-import { createReadStream, statSync, existsSync } from "fs";
 import { EventEmitter } from "events";
+import { createReadStream, existsSync, statSync } from "fs";
 interface options {
   filepath: string;
   data?: any;
   highWaterMark?: number;
+  withStats?: boolean;
 }
 interface socket {
   emit: (event: string, ...arg: any) => socket;
@@ -25,12 +26,17 @@ class Client extends EventEmitter {
   isPaused: boolean = false;
   socket: socket;
   event: string = "";
-  constructor(socket: socket, { filepath, data, highWaterMark }: options) {
+  withStats: boolean;
+  constructor(
+    socket: socket,
+    { filepath, data, highWaterMark, withStats = false }: options
+  ) {
     super();
     this.filepath = filepath;
     this.socket = socket;
     this.data = data;
     this.bytesPerChunk = highWaterMark || this.bytesPerChunk;
+    this.withStats = withStats;
   }
   __getId() {
     this.socket.emit("__akuma_::new::id__", (id: string) => {
@@ -81,7 +87,11 @@ class Client extends EventEmitter {
         this.emit("progress", { size: this.filesize, total });
         let data = { size: this.filesize, total, payload };
         this.emit("done", data);
-        if (typeof cb === "function") cb(data);
+
+        if (typeof cb === "function") {
+          if (this.withStats) cb(data);
+          else cb(...payload);
+        }
         this.__destroy();
       });
   }
