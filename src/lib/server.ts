@@ -19,10 +19,10 @@ interface cb {
   (...data: any): void
 }
 type Handler = (stream: Readable, data: any) => void
+const records: Map<string, UploadRecord> = new Map()
 class Server {
   streams: Map<string, Readable> = new Map()
   handlers: Map<string, Handler> = new Map()
-  records: Map<string, UploadRecord> = new Map()
   io: SocketIO.Socket
   cleaner: NodeJS.Timeout | null = null
   constructor(io: SocketIO.Socket) {
@@ -44,6 +44,9 @@ class Server {
         this.io.emit(`__akuma_::resume::${id}__`)
       }
     })
+  }
+  get records() {
+    return records
   }
   private __createNew(ack?: cb | string, id?: string) {
     if (typeof id === 'string' || typeof ack === 'string') {
@@ -86,15 +89,23 @@ class Server {
           this.records.set(id, newRecord)
         }
       } else {
-        this.records.set(id, {
-          event,
-          uploadedChunks: chunk.length,
-          paused: false,
-          dirty: false,
-          expire: this.__addTime(new Date(), true),
-          active: true,
-          id
-        })
+        if (record) {
+          this.records.set(id, {
+            ...record,
+            dirty: false,
+            expire: this.__addTime(new Date(), true)
+          })
+        } else {
+          this.records.set(id, {
+            event,
+            uploadedChunks: chunk.length,
+            paused: false,
+            dirty: false,
+            expire: this.__addTime(new Date(), true),
+            active: true,
+            id
+          })
+        }
         this.streams.set(id, stream)
         record = this.records.get(id) as UploadRecord
         streamInstance = this.streams.get(id) as Readable

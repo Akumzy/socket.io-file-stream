@@ -9,11 +9,11 @@ const difference_in_seconds_1 = __importDefault(require("date-fns/difference_in_
 const add_minutes_1 = __importDefault(require("date-fns/add_minutes"));
 const add_milliseconds_1 = __importDefault(require("date-fns/add_milliseconds"));
 const is_after_1 = __importDefault(require("date-fns/is_after"));
+const records = new Map();
 class Server {
     constructor(io) {
         this.streams = new Map();
         this.handlers = new Map();
-        this.records = new Map();
         this.cleaner = null;
         this.io = io;
         this.io.on('__akuma_::new::id__', (ack) => {
@@ -29,6 +29,9 @@ class Server {
                 this.io.emit(`__akuma_::resume::${id}__`);
             }
         });
+    }
+    get records() {
+        return records;
     }
     __createNew(ack, id) {
         if (typeof id === 'string' || typeof ack === 'string') {
@@ -71,15 +74,20 @@ class Server {
                 }
             }
             else {
-                this.records.set(id, {
-                    event,
-                    uploadedChunks: chunk.length,
-                    paused: false,
-                    dirty: false,
-                    expire: this.__addTime(new Date(), true),
-                    active: true,
-                    id
-                });
+                if (record) {
+                    this.records.set(id, Object.assign({}, record, { dirty: false, expire: this.__addTime(new Date(), true) }));
+                }
+                else {
+                    this.records.set(id, {
+                        event,
+                        uploadedChunks: chunk.length,
+                        paused: false,
+                        dirty: false,
+                        expire: this.__addTime(new Date(), true),
+                        active: true,
+                        id
+                    });
+                }
                 this.streams.set(id, stream);
                 record = this.records.get(id);
                 streamInstance = this.streams.get(id);

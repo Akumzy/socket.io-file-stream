@@ -13,10 +13,10 @@ declare type Handler = (stream: Readable, data: any) => void;
 declare class Server {
     streams: Map<string, Readable>;
     handlers: Map<string, Handler>;
-    records: Map<string, UploadRecord>;
     io: SocketIO.Socket;
     cleaner: NodeJS.Timeout | null;
     constructor(io: SocketIO.Socket);
+    readonly records: Map<string, UploadRecord>;
     private __createNew;
     on(event: string, handler: Handler): void;
     private __listener;
