@@ -5,12 +5,6 @@ import addMinutes from 'date-fns/add_minutes'
 import addMilliseconds from 'date-fns/add_milliseconds'
 import isAfter from 'date-fns/is_after'
 
-interface socket {
-  emit: (event: string, ...arg: any) => socket
-  on: (event: string, ...arg: any) => socket
-  once: (event: string, ...arg: any) => socket
-  off: (event: string, listener: () => void) => void
-}
 interface UploadRecord {
   uploadedChunks: number
   expire: Date
@@ -29,9 +23,9 @@ class Server {
   streams: Map<string, Readable> = new Map()
   handlers: Map<string, Handler> = new Map()
   records: Map<string, UploadRecord> = new Map()
-  io: socket
+  io: SocketIO.Socket
   cleaner: NodeJS.Timeout | null = null
-  constructor(io: socket) {
+  constructor(io: SocketIO.Socket) {
     this.io = io
     //create id
     this.io.on('__akuma_::new::id__', (ack: cb) => {

@@ -6,12 +6,6 @@ interface options {
   highWaterMark?: number
   withStats?: boolean
 }
-interface socket {
-  emit: (event: string, ...arg: any) => socket
-  on: (event: string, ...arg: any) => socket
-  once: (event: string, ...arg: any) => socket
-  off: (event: string, listener: () => void) => void
-}
 
 interface cb {
   (...data: any): void
@@ -24,10 +18,10 @@ class Client extends EventEmitter {
   filepath: string
   data: any
   isPaused: boolean = false
-  socket: socket
+  socket: SocketIOClient.Socket
   event: string = ''
   withStats: boolean
-  constructor(socket: socket, { filepath, data, highWaterMark, withStats = false }: options) {
+  constructor(socket: SocketIOClient.Socket, { filepath, data, highWaterMark, withStats = false }: options) {
     super()
     this.filepath = filepath
     this.socket = socket
