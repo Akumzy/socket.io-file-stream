@@ -30,8 +30,23 @@ client
   .on('cancel', () => {
     console.log('canceled')
   })
-io.on('disconnect', () => {
-  client.pause()
-}).on('connect', () => {
-  client.resume()
-})
+  .on('ready', () => {
+    io.on('disconnect', () => {
+      client.pause()
+    }).on('connect', () => {
+      client.resume()
+    })
+  })
+
+setTimeout(() => {
+  io.disconnect()
+  setTimeout(() => {
+    io.connect()
+  }, 100)
+}, 1000)
+setTimeout(() => {
+  io.disconnect()
+  setTimeout(() => {
+    io.connect()
+  }, 5000)
+}, 1300)

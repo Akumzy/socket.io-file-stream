@@ -8,9 +8,9 @@ io.on('connect', () => {
 //Client is not reusable
 //once done it will be destroy
 const client = new Client(io, {
-  filepath: '/home/akumzy/Music/04. DJ Khaled - Wild Thoughts (feat. Rihanna & Br.mp3',
+  filepath: join(__dirname, '../dist/src/lib/client-web.js'),
   data: {
-    name: '04. DJ Khaled - Wild Thoughts (feat. Rihanna & Br.mp3'
+    name: 'web.js'
   }
 })
 // auto reconnect
@@ -34,8 +34,22 @@ client
   .on('cancel', () => {
     console.log('canceled')
   })
-io.on('disconnect', () => {
-  client.pause()
-}).on('connect', () => {
-  client.resume()
-})
+  .on('ready', () => {
+    io.on('disconnect', () => {
+      client.pause()
+    }).on('connect', () => {
+      client.resume()
+    })
+  })
+// setTimeout(() => {
+//   io.disconnect()
+//   setTimeout(() => {
+//     io.connect()
+//   }, 100)
+// }, 1500)
+// setTimeout(() => {
+//   io.disconnect()
+//   setTimeout(() => {
+//     io.connect()
+//   }, 5000)
+// }, 1700)

@@ -18,7 +18,7 @@ interface UploadRecord {
 interface cb {
   (...data: any): void
 }
-type Handler = (stream: Readable, data: any) => void
+type Handler = (stream: Readable, data: any, resumeAt?: number, ack?: cb) => void
 const records: Map<string, UploadRecord> = new Map()
 class Server {
   streams: Map<string, Readable> = new Map()
@@ -39,6 +39,10 @@ class Server {
       let record = this.records.get(id)
       if (record) {
         this.io.emit(`__akuma_::resume::${id}__`, record.uploadedChunks)
+        let streamInstance = this.streams.get(id)
+        if (!streamInstance) {
+          this.__createNew(id)
+        }
       } else {
         this.__createNew(id)
         this.io.emit(`__akuma_::resume::${id}__`)
@@ -51,7 +55,7 @@ class Server {
   private __createNew(ack?: cb | string, id?: string) {
     if (typeof id === 'string' || typeof ack === 'string') {
       let _id = typeof ack === 'string' ? ack : (id as string)
-      this.__listener(_id)
+      this.__listener(_id, true)
       this.__cleaner()
     } else {
       if (typeof ack === 'function') {
@@ -72,10 +76,10 @@ class Server {
       this.handlers.set(event, handler)
     }
   }
-  private __listener(id: string) {
+  private __listener(id: string, resume = false) {
     const stream = new Readable()
     stream._read = () => {}
-    this.io.on(`__akuma_::data::${id}__`, ({ chunk, info, event }: any) => {
+    this.io.on(`__akuma_::data::${id}__`, ({ chunk, info, event, withAck }: any) => {
       if (!this.cleaner) this.__cleaner()
       let //
         uploadedChunks = chunk.length,
@@ -95,6 +99,7 @@ class Server {
             dirty: false,
             expire: this.__addTime(new Date(), true)
           })
+          uploadedChunks = record.uploadedChunks + chunk.length
         } else {
           this.records.set(id, {
             event,
@@ -105,6 +110,7 @@ class Server {
             active: true,
             id
           })
+          uploadedChunks = chunk.length
         }
         this.streams.set(id, stream)
         record = this.records.get(id) as UploadRecord
@@ -112,14 +118,31 @@ class Server {
       }
 
       if (record && record.dirty) {
-        streamInstance.push(chunk)
+        let buf = Buffer.from(chunk)
+        streamInstance.push(buf, 'binary')
       } else {
         if (record) {
           let handler = this.handlers.get(record.event)
+          const self = this
           if (handler) {
-            handler(stream, info.data)
-            stream.push(chunk)
-            this.records.set(id, { ...record, dirty: true, uploadedChunks: chunk.length })
+            if (resume) {
+              if (withAck) {
+                handler(stream, info.data, record.uploadedChunks, (...ack: any[]) => {
+                  let r = self.records.get(id) as UploadRecord
+                  self.io.emit(`__akuma_::end::${id}__`, { payload: ack, total: r.uploadedChunks })
+                })
+              } else handler(stream, info.data, record.uploadedChunks)
+            } else {
+              if (withAck) {
+                handler(stream, info.data, record.uploadedChunks, (...ack: any[]) => {
+                  let r = self.records.get(id) as UploadRecord
+                  self.io.emit(`__akuma_::end::${id}__`, { payload: ack, total: r.uploadedChunks })
+                })
+              } else handler(stream, info.data)
+            }
+            let buf = Buffer.from(chunk)
+            stream.push(buf, 'binary')
+            this.records.set(id, { ...record, dirty: true, uploadedChunks })
           }
         }
       }
@@ -128,7 +151,7 @@ class Server {
        * Check if transfered buffers are equal to
        * file size then emit end else request for more
        */
-      if (!(uploadedChunks >= info.size)) {
+      if (uploadedChunks < info.size) {
         this.io.emit(`__akuma_::more::${id}__`, uploadedChunks)
       } else {
         streamInstance.push(null)

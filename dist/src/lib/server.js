@@ -23,6 +23,10 @@ class Server {
             let record = this.records.get(id);
             if (record) {
                 this.io.emit(`__akuma_::resume::${id}__`, record.uploadedChunks);
+                let streamInstance = this.streams.get(id);
+                if (!streamInstance) {
+                    this.__createNew(id);
+                }
             }
             else {
                 this.__createNew(id);
@@ -36,7 +40,7 @@ class Server {
     __createNew(ack, id) {
         if (typeof id === 'string' || typeof ack === 'string') {
             let _id = typeof ack === 'string' ? ack : id;
-            this.__listener(_id);
+            this.__listener(_id, true);
             this.__cleaner();
         }
         else {
@@ -58,10 +62,10 @@ class Server {
             this.handlers.set(event, handler);
         }
     }
-    __listener(id) {
+    __listener(id, resume = false) {
         const stream = new stream_1.Readable();
         stream._read = () => { };
-        this.io.on(`__akuma_::data::${id}__`, ({ chunk, info, event }) => {
+        this.io.on(`__akuma_::data::${id}__`, ({ chunk, info, event, withAck }) => {
             if (!this.cleaner)
                 this.__cleaner();
             let uploadedChunks = chunk.length, streamInstance = this.streams.get(id), record = this.records.get(id);
@@ -76,6 +80,7 @@ class Server {
             else {
                 if (record) {
                     this.records.set(id, Object.assign({}, record, { dirty: false, expire: this.__addTime(new Date(), true) }));
+                    uploadedChunks = record.uploadedChunks + chunk.length;
                 }
                 else {
                     this.records.set(id, {
@@ -87,25 +92,48 @@ class Server {
                         active: true,
                         id
                     });
+                    uploadedChunks = chunk.length;
                 }
                 this.streams.set(id, stream);
                 record = this.records.get(id);
                 streamInstance = this.streams.get(id);
             }
             if (record && record.dirty) {
-                streamInstance.push(chunk);
+                let buf = Buffer.from(chunk);
+                streamInstance.push(buf, 'binary');
             }
             else {
                 if (record) {
                     let handler = this.handlers.get(record.event);
+                    const self = this;
                     if (handler) {
-                        handler(stream, info.data);
-                        stream.push(chunk);
-                        this.records.set(id, Object.assign({}, record, { dirty: true, uploadedChunks: chunk.length }));
+                        if (resume) {
+                            if (withAck) {
+                                handler(stream, info.data, record.uploadedChunks, (...ack) => {
+                                    let r = self.records.get(id);
+                                    self.io.emit(`__akuma_::end::${id}__`, { payload: ack, total: r.uploadedChunks });
+                                });
+                            }
+                            else
+                                handler(stream, info.data, record.uploadedChunks);
+                        }
+                        else {
+                            if (withAck) {
+                                handler(stream, info.data, record.uploadedChunks, (...ack) => {
+                                    let r = self.records.get(id);
+                                    self.io.emit(`__akuma_::end::${id}__`, { payload: ack, total: r.uploadedChunks });
+                                });
+                            }
+                            else
+                                handler(stream, info.data);
+                        }
+                        let buf = Buffer.from(chunk);
+                        stream.push(buf, 'binary');
+                        this.records.set(id, Object.assign({}, record, { dirty: true, uploadedChunks }));
                     }
                 }
             }
-            if (!(uploadedChunks >= info.size)) {
+            if (uploadedChunks < info.size) {
                 this.io.emit(`__akuma_::more::${id}__`, uploadedChunks);
             }
             else {

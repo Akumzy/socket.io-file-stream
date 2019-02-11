@@ -22,7 +22,7 @@ declare class Client extends EventEmitter {
     withStats: boolean;
     constructor(socket: SocketIOClient.Socket, { filepath, data, highWaterMark, withStats }: options);
     __getId(): void;
-    __read(start: number, end: number): void;
+    __read(start: number, end: number, withAck?: boolean): void;
     __start(cb: cb): void;
     upload(event: string, cb: cb): this;
     pause(): void;

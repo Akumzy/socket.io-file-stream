@@ -9,7 +9,10 @@ interface UploadRecord {
     dirty: boolean;
     id: string;
 }
-declare type Handler = (stream: Readable, data: any) => void;
+interface cb {
+    (...data: any): void;
+}
+declare type Handler = (stream: Readable, data: any, resumeAt?: number, ack?: cb) => void;
 declare class Server {
     streams: Map<string, Readable>;
     handlers: Map<string, Handler>;

@@ -20,7 +20,7 @@ class Client extends EventEmitter {
   isPaused: boolean = false
   socket: SocketIOClient.Socket
   event: string = ''
-  withStats: boolean
+  withStats = false
   constructor(socket: SocketIOClient.Socket, { filepath, data, highWaterMark, withStats = false }: options) {
     super()
     this.filepath = filepath
@@ -36,7 +36,7 @@ class Client extends EventEmitter {
       this.emit('ready')
     })
   }
-  __read(start: number, end: number) {
+  __read(start: number, end: number, withAck = false) {
     if (this.isPaused) return
     const stream = createReadStream(this.filepath, {
       highWaterMark: this.bytesPerChunk,
@@ -51,7 +51,8 @@ class Client extends EventEmitter {
           size: this.filesize,
           data: this.data
         },
-        event: this.event
+        event: this.event,
+        withAck
       })
       stream.close()
       this.emit('progress', { size: this.filesize, total: this.chunks })
@@ -59,21 +60,21 @@ class Client extends EventEmitter {
   }
   __start(cb: cb) {
     this.filesize = statSync(this.filepath).size
-    this.__read(0, this.bytesPerChunk)
+    let withAck = typeof cb === 'function'
+    this.__read(0, this.bytesPerChunk, withAck)
     this.socket
       .on(`__akuma_::more::${this.id}__`, (chunks: number) => {
         if (!chunks) return
         this.chunks = chunks
         let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-        this.__read(chunks, toChunk + chunks)
+        this.__read(chunks, toChunk + chunks, withAck)
       })
       .on(`__akuma_::resume::${this.id}__`, (chunks: number | null) => {
-        console.log({ chunks })
         if (typeof chunks === 'number') {
           this.chunks = chunks
           let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-          this.__read(chunks, toChunk + chunks)
-        } else this.__read(0, this.bytesPerChunk)
+          this.__read(chunks, toChunk + chunks, withAck)
+        } else this.__read(0, this.bytesPerChunk, withAck)
       })
       .on(`__akuma_::end::${this.id}__`, ({ total, payload }: any) => {
         this.emit('progress', { size: this.filesize, total })

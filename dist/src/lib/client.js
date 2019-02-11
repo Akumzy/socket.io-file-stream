@@ -11,6 +11,7 @@ class Client extends events_1.EventEmitter {
         this.bytesPerChunk = 100e3;
         this.isPaused = false;
         this.event = '';
+        this.withStats = false;
         this.filepath = filepath;
         this.socket = socket;
         this.data = data;
@@ -25,7 +26,7 @@ class Client extends events_1.EventEmitter {
             this.emit('ready');
         });
     }
-    __read(start, end) {
+    __read(start, end, withAck = false) {
         if (this.isPaused)
             return;
         const stream = fs_1.createReadStream(this.filepath, {
@@ -41,7 +42,8 @@ class Client extends events_1.EventEmitter {
                     size: this.filesize,
                     data: this.data
                 },
-                event: this.event
+                event: this.event,
+                withAck
             });
             stream.close();
             this.emit('progress', { size: this.filesize, total: this.chunks });
@@ -49,24 +51,24 @@ class Client extends events_1.EventEmitter {
     }
     __start(cb) {
         this.filesize = fs_1.statSync(this.filepath).size;
-        this.__read(0, this.bytesPerChunk);
+        let withAck = typeof cb === 'function';
+        this.__read(0, this.bytesPerChunk, withAck);
         this.socket
             .on(`__akuma_::more::${this.id}__`, (chunks) => {
             if (!chunks)
                 return;
             this.chunks = chunks;
             let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks);
-            this.__read(chunks, toChunk + chunks);
+            this.__read(chunks, toChunk + chunks, withAck);
         })
             .on(`__akuma_::resume::${this.id}__`, (chunks) => {
-            console.log({ chunks });
             if (typeof chunks === 'number') {
                 this.chunks = chunks;
                 let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks);
-                this.__read(chunks, toChunk + chunks);
+                this.__read(chunks, toChunk + chunks, withAck);
             }
             else
-                this.__read(0, this.bytesPerChunk);
+                this.__read(0, this.bytesPerChunk, withAck);
         })
             .on(`__akuma_::end::${this.id}__`, ({ total, payload }) => {
             this.emit('progress', { size: this.filesize, total });
