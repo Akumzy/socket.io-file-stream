@@ -1,6 +1,5 @@
 const io = require('socket.io-client')('http://localhost:8090'),
-  Client = require('../dist/src').Client,
-  { join } = require('path')
+  Client = require('../dist/src').Client
 
 io.on('connect', () => {
   console.log('cool')
@@ -8,14 +7,11 @@ io.on('connect', () => {
 //Client is not reusable
 //once done it will be destroy
 const client = new Client(io, {
-  filepath: '/home/akumzy/Music/04. DJ Khaled - Wild Thoughts (feat. Rihanna & Br.mp3',
+  filepath: '/home/akumzy/Videos/Algebra Introduction - Basic Overview - Online Crash Course Review Video Tutoria.mp4',
   data: {
-    name: '04. DJ Khaled - Wild Thoughts (feat. Rihanna & Br.mp3'
+    name: 'Algebra Introduction - Basic Overview - Online Crash Course Review Video Tutoria.mp4'
   }
 })
-// auto reconnect
-// as long as it's below one hour
-// it will start from where it stops
 
 client
   .upload('file-upload', data => {

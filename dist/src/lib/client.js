@@ -10,7 +10,7 @@ class Client extends events_1.EventEmitter {
         this.id = null;
         this.bytesPerChunk = 100e3;
         this.isPaused = false;
-        this.event = "";
+        this.event = '';
         this.filepath = filepath;
         this.socket = socket;
         this.data = data;
@@ -18,11 +18,11 @@ class Client extends events_1.EventEmitter {
         this.withStats = withStats;
     }
     __getId() {
-        this.socket.emit("__akuma_::new::id__", (id) => {
+        this.socket.emit('__akuma_::new::id__', (id) => {
             if (this.id)
                 return;
             this.id = id;
-            this.emit("ready");
+            this.emit('ready');
         });
     }
     __read(start, end) {
@@ -34,17 +34,17 @@ class Client extends events_1.EventEmitter {
             end
         });
         stream.read(end - start);
-        stream.once("data", (chunk) => {
+        stream.once('data', (chunk) => {
             this.socket.emit(`__akuma_::data::${this.id}__`, {
                 chunk,
-                data: {
+                info: {
                     size: this.filesize,
                     data: this.data
                 },
                 event: this.event
             });
             stream.close();
-            this.emit("progress", { size: this.filesize, total: this.chunks });
+            this.emit('progress', { size: this.filesize, total: this.chunks });
         });
     }
     __start(cb) {
@@ -59,7 +59,8 @@ class Client extends events_1.EventEmitter {
             this.__read(chunks, toChunk + chunks);
         })
             .on(`__akuma_::resume::${this.id}__`, (chunks) => {
-            if (typeof chunks === "number") {
+            console.log({ chunks });
+            if (typeof chunks === 'number') {
                 this.chunks = chunks;
                 let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks);
                 this.__read(chunks, toChunk + chunks);
@@ -68,10 +69,10 @@ class Client extends events_1.EventEmitter {
                 this.__read(0, this.bytesPerChunk);
         })
             .on(`__akuma_::end::${this.id}__`, ({ total, payload }) => {
-            this.emit("progress", { size: this.filesize, total });
+            this.emit('progress', { size: this.filesize, total });
             let data = { size: this.filesize, total, payload };
-            this.emit("done", data);
-            if (typeof cb === "function") {
+            this.emit('done', data, {});
+            if (typeof cb === 'function') {
                 if (this.withStats)
                     cb(data);
                 else
@@ -82,24 +83,24 @@ class Client extends events_1.EventEmitter {
     }
     upload(event, cb) {
         this.event = event;
-        if (typeof this.filepath === "string") {
+        if (typeof this.filepath === 'string') {
             if (fs_1.existsSync(this.filepath)) {
                 if (this.id)
                     this.__start(cb);
                 else {
                     this.__getId();
-                    let whenToAbort = new Date().setMinutes(1), timer = setInterval(() => {
+                    let whenToAbort = new Date(new Date().getSeconds() + 30).getTime(), timer = setInterval(() => {
                         if (this.id)
                             clearInterval(timer);
                         else {
                             this.__getId();
                             if (Date.now() >= whenToAbort) {
                                 this.__destroy();
-                                this.emit("cancel");
+                                this.emit('cancel');
                             }
                         }
                     }, 5000);
-                    this.once("ready", () => {
+                    this.once('ready', () => {
                         clearInterval(timer);
                         this.__start(cb);
                     });
@@ -116,19 +117,19 @@ class Client extends events_1.EventEmitter {
     }
     pause() {
         this.isPaused = true;
-        this.emit("pause");
+        this.emit('pause');
     }
     resume() {
         if (!this.id)
             return;
         this.isPaused = false;
-        this.emit("resume");
+        this.emit('resume');
         this.socket.emit(`__akuma_::resume::__`, this.id);
     }
     stop() {
         this.socket.emit(`__akuma_::stop::__`, this.id);
         this.__destroy();
-        this.emit("cancel");
+        this.emit('cancel');
     }
     __destroy() {
         this.socket.off(`__akuma_::more::${this.id}__`, () => { });

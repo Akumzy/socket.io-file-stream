@@ -1,17 +1,32 @@
+import { Readable } from 'stream';
 interface socket {
     emit: (event: string, ...arg: any) => socket;
     on: (event: string, ...arg: any) => socket;
     once: (event: string, ...arg: any) => socket;
     off: (event: string, listener: () => void) => void;
 }
+interface UploadRecord {
+    uploadedChunks: number;
+    expire: Date;
+    event: string;
+    active: boolean;
+    paused: boolean;
+    dirty: boolean;
+    id: string;
+}
+declare type Handler = (stream: Readable, data: any) => void;
 declare class Server {
-    sockets: Map<any, any>;
-    handlers: Map<any, any>;
+    streams: Map<string, Readable>;
+    handlers: Map<string, Handler>;
+    records: Map<string, UploadRecord>;
     io: socket;
-    cleaner: any;
+    cleaner: NodeJS.Timeout | null;
     constructor(io: socket);
-    on(event: string, handler: (...data: any[]) => {}): void;
+    private __createNew;
+    on(event: string, handler: Handler): void;
     private __listener;
     private __cleaner;
+    private __done;
+    private __addTime;
 }
 export default Server;

@@ -1,5 +1,4 @@
-/// <reference types="node" />
-import { EventEmitter } from "events";
+import { EventEmitter } from 'events';
 interface options {
     filepath: string;
     data?: any;
