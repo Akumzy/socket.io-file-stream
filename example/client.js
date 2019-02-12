@@ -18,16 +18,16 @@ const client = new Client(io, {
 // it will start from where it stops
 
 client
-  .upload('file-upload', data => {
-    console.log(data) // 'good'}
+  .upload('file-upload', res => {
+    console.log(res)
   })
   .on('progress', c => {
     // console.log(c) // { size: 783, total: 783 }
     console.log(`${(c.total / c.size) * 100}%`)
   })
-  .on('done', data => {
-    console.log(data) // { size: 783, total: 783, payload: [ 'good' ] }
-  })
+  // .on('done', data => {
+  //   console.log(data) // { size: 783, total: 783, payload: [ 'good' ] }
+  // })
   .on('pause', () => {
     console.log('pause')
   })
@@ -41,15 +41,15 @@ client
       client.resume()
     })
   })
-// setTimeout(() => {
-//   io.disconnect()
-//   setTimeout(() => {
-//     io.connect()
-//   }, 100)
-// }, 1500)
-// setTimeout(() => {
-//   io.disconnect()
-//   setTimeout(() => {
-//     io.connect()
-//   }, 5000)
-// }, 1700)
+setTimeout(() => {
+  io.disconnect()
+  setTimeout(() => {
+    io.connect()
+  }, 100)
+}, 1500)
+setTimeout(() => {
+  io.disconnect()
+  setTimeout(() => {
+    io.connect()
+  }, 5000)
+}, 1700)

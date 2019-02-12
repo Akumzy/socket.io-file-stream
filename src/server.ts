@@ -1,15 +1,15 @@
 import { uuid } from './uuid'
-import { Readable } from 'stream'
 import differenceInSeconds from 'date-fns/difference_in_seconds'
 import addMinutes from 'date-fns/add_minutes'
 import addMilliseconds from 'date-fns/add_milliseconds'
 import isAfter from 'date-fns/is_after'
+import { Subject } from 'rxjs'
 
 interface UploadRecord {
   uploadedChunks: number
   expire: Date
   event: string
-  active: boolean
+  active?: boolean
   paused: boolean
   dirty: boolean
   id: string
@@ -18,15 +18,29 @@ interface UploadRecord {
 interface cb {
   (...data: any): void
 }
-type Handler = (stream: Readable, data: any, resumeAt?: number, ack?: cb) => void
+interface StreamPayload {
+  buffer: Buffer
+  fileSize: number
+  uploadedChunks: number
+  flag: string | undefined
+}
+interface OnDataPayload {
+  chunk: Buffer
+  info: { size: number; data: any }
+  event: string
+  withAck: boolean
+}
+type IStream = Subject<StreamPayload>
+type Handler = (stream: IStream, data: any, resumeAt?: number, ack?: cb) => void
+// Store all the record out the Server class to persist the state
+// because this Server will be instantiate inside onconnection event
 const records: Map<string, UploadRecord> = new Map()
+
 class Server {
-  streams: Map<string, Readable> = new Map()
-  handlers: Map<string, Handler> = new Map()
-  io: SocketIO.Socket
-  cleaner: NodeJS.Timeout | null = null
-  constructor(io: SocketIO.Socket) {
-    this.io = io
+  private streams: Map<string, IStream> = new Map()
+  private handlers: Map<string, Handler> = new Map()
+  private cleaner: NodeJS.Timeout | null = null
+  constructor(private io: SocketIO.Socket) {
     //create id
     this.io.on('__akuma_::new::id__', (ack: cb) => {
       this.__createNew(ack)
@@ -38,6 +52,7 @@ class Server {
       //return nothing
       let record = this.records.get(id)
       if (record) {
+        this.records.set(id, { ...record, active: false })
         this.io.emit(`__akuma_::resume::${id}__`, record.uploadedChunks)
         let streamInstance = this.streams.get(id)
         if (!streamInstance) {
@@ -77,18 +92,18 @@ class Server {
     }
   }
   private __listener(id: string, resume = false) {
-    const stream = new Readable()
-    stream._read = () => {}
-    this.io.on(`__akuma_::data::${id}__`, ({ chunk, info, event, withAck }: any) => {
+    const stream = new Subject<StreamPayload>()
+    let isFirst = true
+
+    this.io.on(`__akuma_::data::${id}__`, ({ chunk, info, event, withAck }: OnDataPayload) => {
       if (!this.cleaner) this.__cleaner()
       let //
-        uploadedChunks = chunk.length,
+        uploadedChunks = 0,
         streamInstance = this.streams.get(id),
         record = this.records.get(id)
       if (streamInstance) {
         if (record) {
           record.active = true
-          uploadedChunks = record.uploadedChunks + chunk.length
           let newRecord = { ...record, uploadedChunks, expire: this.__addTime(record.expire) }
           this.records.set(id, newRecord)
         }
@@ -99,71 +114,80 @@ class Server {
             dirty: false,
             expire: this.__addTime(new Date(), true)
           })
-          uploadedChunks = record.uploadedChunks + chunk.length
         } else {
           this.records.set(id, {
             event,
-            uploadedChunks: chunk.length,
+            uploadedChunks: 0,
             paused: false,
             dirty: false,
             expire: this.__addTime(new Date(), true),
-            active: true,
             id
           })
-          uploadedChunks = chunk.length
         }
         this.streams.set(id, stream)
         record = this.records.get(id) as UploadRecord
-        streamInstance = this.streams.get(id) as Readable
+        streamInstance = stream
       }
-
-      if (record && record.dirty) {
-        let buf = Buffer.from(chunk)
-        streamInstance.push(buf, 'binary')
-      } else {
-        if (record) {
+      let streamPayload: StreamPayload
+      if (record) {
+        let flag: string | undefined
+        if (!resume && isFirst) {
+          isFirst = false
+          flag = 'w'
+        }
+        // Invoke this handler once by checking if
+        // it's record instance active field is truthy
+        if (!record.active) {
           let handler = this.handlers.get(record.event)
           const self = this
+          // check if this has handler
           if (handler) {
-            if (resume) {
-              if (withAck) {
-                handler(stream, info.data, record.uploadedChunks, (...ack: any[]) => {
-                  let r = self.records.get(id) as UploadRecord
-                  self.io.emit(`__akuma_::end::${id}__`, { payload: ack, total: r.uploadedChunks })
-                })
-              } else handler(stream, info.data, record.uploadedChunks)
-            } else {
-              if (withAck) {
-                handler(stream, info.data, record.uploadedChunks, (...ack: any[]) => {
-                  let r = self.records.get(id) as UploadRecord
-                  self.io.emit(`__akuma_::end::${id}__`, { payload: ack, total: r.uploadedChunks })
-                })
-              } else handler(stream, info.data)
+            // check if this just resume of an disconnected connection
+            const callHandler = (handler: Handler, streamInstance: IStream) => {
+              handler(streamInstance, info.data, 0, (...ack: any[]) => {
+                let r = self.records.get(id)
+                if (r) self.io.emit(`__akuma_::end::${id}__`, { payload: ack, total: r.uploadedChunks })
+              })
             }
-            let buf = Buffer.from(chunk)
-            stream.push(buf, 'binary')
-            this.records.set(id, { ...record, dirty: true, uploadedChunks })
+            if (resume) {
+              // check if this has an acknowledgement
+              if (withAck) callHandler(handler, streamInstance)
+              else handler(streamInstance, info.data, record.uploadedChunks)
+            } else {
+              if (withAck) callHandler(handler, streamInstance)
+              else handler(streamInstance, info.data, 0)
+            }
+            this.records.set(id, { ...record, dirty: true, uploadedChunks, active: true })
           }
         }
-      }
+        uploadedChunks = record.uploadedChunks + chunk.length
+        this.records.set(id, { ...record, uploadedChunks })
+        streamPayload = {
+          buffer: Buffer.from(chunk),
+          fileSize: info.size,
+          uploadedChunks: record.uploadedChunks,
+          flag
+        }
+        /**
+         * Check if transfered buffers are equal to
+         * file size then emit end else request for more
+         */
 
-      /**
-       * Check if transfered buffers are equal to
-       * file size then emit end else request for more
-       */
-      if (uploadedChunks < info.size) {
-        this.io.emit(`__akuma_::more::${id}__`, uploadedChunks)
-      } else {
-        streamInstance.push(null)
-        this.__done(id)
+        if (uploadedChunks < info.size) {
+          streamInstance.next(streamPayload)
+          this.io.emit(`__akuma_::more::${id}__`, uploadedChunks)
+        } else {
+          streamInstance.next(streamPayload)
+          streamInstance.complete()
+        }
       }
     })
 
     this.io.on(`__akuma_::stop::__`, (id: string) => {
       //close the stream
       if (this.records.has(id)) {
-        let streamInstance = this.streams.get(id) as Readable
-        streamInstance.push(null)
+        let streamInstance = this.streams.get(id)
+        if (streamInstance) streamInstance.error('Stream closed')
         this.__done(id)
       }
     })
@@ -177,9 +201,8 @@ class Server {
             this.records.delete(val.id)
             let stream = this.streams.get(val.id)
             if (stream) {
-              stream.destroy(new Error('Reconnect timeout'))
-              this.streams.delete(val.id)
-              this.handlers.delete(val.id)
+              stream.error('Reconnect timeout')
+              this.__done(val.id)
             }
             if (this.cleaner) clearInterval(this.cleaner)
           }
@@ -195,7 +218,7 @@ class Server {
       this.records.delete(id)
       this.handlers.delete(id)
       this.streams.delete(id)
-    }, 1000)
+    }, 500)
   }
   private __addTime(date: Date, isNew = false) {
     if (isNew) {
@@ -206,4 +229,5 @@ class Server {
     return date
   }
 }
+
 export default Server

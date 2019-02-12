@@ -1,6 +1,6 @@
-import Client from './lib/client'
-import Server from './lib/server'
-import ClientWeb from './lib/client-web'
+import Client from './client'
+import Server from './server'
+import ClientWeb from './client-web'
 
 export { Client, Server, ClientWeb }
 export default { Client, Server, ClientWeb }

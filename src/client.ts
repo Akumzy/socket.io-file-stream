@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events'
 import { createReadStream, existsSync, statSync } from 'fs'
+import { addSeconds } from 'date-fns'
 interface options {
   filepath: string
   data?: any
@@ -18,25 +19,23 @@ class Client extends EventEmitter {
   filepath: string
   data: any
   isPaused: boolean = false
-  socket: SocketIOClient.Socket
   event: string = ''
   withStats = false
-  constructor(socket: SocketIOClient.Socket, { filepath, data, highWaterMark, withStats = false }: options) {
+  constructor(private socket: SocketIOClient.Socket, { filepath, data, highWaterMark, withStats = false }: options) {
     super()
     this.filepath = filepath
-    this.socket = socket
     this.data = data
     this.bytesPerChunk = highWaterMark || this.bytesPerChunk
     this.withStats = withStats
   }
-  __getId() {
+  private __getId() {
     this.socket.emit('__akuma_::new::id__', (id: string) => {
       if (this.id) return
       this.id = id
       this.emit('ready')
     })
   }
-  __read(start: number, end: number, withAck = false) {
+  private __read(start: number, end: number, withAck = false) {
     if (this.isPaused) return
     const stream = createReadStream(this.filepath, {
       highWaterMark: this.bytesPerChunk,
@@ -58,7 +57,7 @@ class Client extends EventEmitter {
       this.emit('progress', { size: this.filesize, total: this.chunks })
     })
   }
-  __start(cb: cb) {
+  private __start(cb: cb) {
     this.filesize = statSync(this.filepath).size
     let withAck = typeof cb === 'function'
     this.__read(0, this.bytesPerChunk, withAck)
@@ -88,15 +87,15 @@ class Client extends EventEmitter {
         this.__destroy()
       })
   }
-  upload(event: string, cb: cb) {
+  public upload(event: string, cb: cb) {
     this.event = event
     if (typeof this.filepath === 'string') {
       if (existsSync(this.filepath)) {
         if (this.id) this.__start(cb)
         else {
+          // get an id from server
           this.__getId()
-
-          let whenToAbort = new Date(new Date().getSeconds() + 30).getTime(),
+          let whenToAbort = addSeconds(new Date(), 30).getTime(),
             timer = setInterval(() => {
               if (this.id) clearInterval(timer)
               else {
@@ -113,30 +112,32 @@ class Client extends EventEmitter {
           })
         }
       } else {
-        throw new Error(`${this.filepath} does not exist.`)
+        let text = `${this.filepath} does not exist.`
+        throw new Error(text)
       }
     } else {
-      throw new Error(`${this.filepath} must be typeof string.`)
+      let text = `${this.filepath} must be typeof string.`
+      throw new Error(text)
     }
 
     return this
   }
-  pause() {
+  public pause() {
     this.isPaused = true
     this.emit('pause')
   }
-  resume() {
+  public resume() {
     if (!this.id) return
     this.isPaused = false
     this.emit('resume')
     this.socket.emit(`__akuma_::resume::__`, this.id)
   }
-  stop() {
+  public stop() {
     this.socket.emit(`__akuma_::stop::__`, this.id)
     this.__destroy()
     this.emit('cancel')
   }
-  __destroy() {
+  public __destroy() {
     this.socket.off(`__akuma_::more::${this.id}__`, () => {})
     this.socket.off(`__akuma_::data::${this.id}__`, () => {})
     this.socket.off(`__akuma_::resume::${this.id}__`, () => {})

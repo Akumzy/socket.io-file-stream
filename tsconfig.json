@@ -5,10 +5,13 @@
     "noImplicitAny": true,
     "removeComments": true,
     "declaration": true,
-    "outDir": "dist/",
-    "rootDir": "./",
+    "outDir": "dist",
+    "rootDir": ".",
     "strict": true,
     "moduleResolution": "node",
-    "esModuleInterop": true
-  }
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "sourceRoot": "src/index.ts"
+  },
+  "include": ["src/*.ts"]
 }
