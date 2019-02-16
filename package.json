@@ -1,7 +1,7 @@
 {
   "name": "socket.io-file-stream",
   "version": "0.2.2",
-  "description": "Socket.io file stream",
+  "description": "Socket.io ckfile stream",
   "main": "index.ts",
   "scripts": {
     "test": "",
