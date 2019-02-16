@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { createReadStream, existsSync, statSync } from 'fs'
+import { createReadStream, existsSync, statSync, readFileSync } from 'fs'
 import { addSeconds } from 'date-fns'
 interface options {
   filepath: string
@@ -15,7 +15,7 @@ class Client extends EventEmitter {
   filesize: number = 0
   chunks: number = 0
   id: string | null = null
-  bytesPerChunk: number = 100e3 //100 kb
+  bytesPerChunk: number = 102400 //100e3
   filepath: string
   data: any
   isPaused: boolean = false
@@ -37,6 +37,20 @@ class Client extends EventEmitter {
   }
   private __read(start: number, end: number, withAck = false) {
     if (this.isPaused) return
+    if (this.filesize < this.bytesPerChunk) {
+      let chunk = readFileSync(this.filepath)
+      this.socket.emit(`__akuma_::data::${this.id}__`, {
+        chunk,
+        info: {
+          size: this.filesize,
+          data: this.data
+        },
+        event: this.event,
+        withAck
+      })
+      this.emit('progress', { size: this.filesize, total: chunk.length })
+      return
+    }
     const stream = createReadStream(this.filepath, {
       highWaterMark: this.bytesPerChunk,
       start,

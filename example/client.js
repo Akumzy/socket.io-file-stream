@@ -1,5 +1,5 @@
 const io = require('socket.io-client')('http://localhost:8090'),
-  Client = require('../dist/src').Client,
+  Client = require('../client'),
   { join } = require('path')
 
 io.on('connect', () => {
@@ -8,9 +8,9 @@ io.on('connect', () => {
 //Client is not reusable
 //once done it will be destroy
 const client = new Client(io, {
-  filepath: join(__dirname, '../dist/src/lib/client-web.js'),
+  filepath: join(__dirname, './text.txt'),
   data: {
-    name: 'web.js'
+    name: 'hello.txt'
   }
 })
 // auto reconnect
@@ -22,12 +22,11 @@ client
     console.log(res)
   })
   .on('progress', c => {
-    // console.log(c) // { size: 783, total: 783 }
+    console.log(c) // { size: 783, total: 783 }
+    console.log(typeof c.total, typeof c.size)
     console.log(`${(c.total / c.size) * 100}%`)
   })
-  // .on('done', data => {
-  //   console.log(data) // { size: 783, total: 783, payload: [ 'good' ] }
-  // })
+
   .on('pause', () => {
     console.log('pause')
   })
@@ -41,15 +40,3 @@ client
       client.resume()
     })
   })
-setTimeout(() => {
-  io.disconnect()
-  setTimeout(() => {
-    io.connect()
-  }, 100)
-}, 1500)
-setTimeout(() => {
-  io.disconnect()
-  setTimeout(() => {
-    io.connect()
-  }, 5000)
-}, 1700)

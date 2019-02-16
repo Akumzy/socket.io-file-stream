@@ -1,17 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ES2016",
+    "target": "ESNEXT",
     "module": "commonjs",
     "noImplicitAny": true,
     "removeComments": true,
     "declaration": true,
-    "outDir": "dist",
     "rootDir": ".",
     "strict": true,
     "moduleResolution": "node",
     "esModuleInterop": true,
-    "sourceMap": true,
-    "sourceRoot": "src/index.ts"
+    "sourceMap": false
   },
-  "include": ["src/*.ts"]
+  "include": ["*.ts", "index.ts", "uuid.ts"]
 }

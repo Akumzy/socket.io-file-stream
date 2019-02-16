@@ -1,5 +1,5 @@
 const io = require('socket.io-client')('http://localhost:8090'),
-  Client = require('../dist/src').Client
+  Client = require('../client')
 
 io.on('connect', () => {
   console.log('cool')
