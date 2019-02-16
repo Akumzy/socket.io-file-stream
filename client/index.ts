@@ -6,27 +6,37 @@ interface options {
   data?: any
   highWaterMark?: number
   withStats?: boolean
+  maxWait?: number
 }
 
 interface cb {
   (...data: any): void
 }
-class Client extends EventEmitter {
-  filesize: number = 0
-  chunks: number = 0
+export default class Client extends EventEmitter {
+  filesize = 0
+  private chunks = 0
   id: string | null = null
-  bytesPerChunk: number = 102400 //100e3
+  private bytesPerChunk = 102400 //100kb
   filepath: string
   data: any
   isPaused: boolean = false
   event: string = ''
-  withStats = false
-  constructor(private socket: SocketIOClient.Socket, { filepath, data, highWaterMark, withStats = false }: options) {
+  private withStats: boolean
+  private maxWait: number
+  private isResume = true
+  private isFirst = true
+  private maxWaitCounter = 0
+  private maxWaitTimer: NodeJS.Timeout | null = null
+  constructor(
+    private socket: SocketIOClient.Socket,
+    { filepath, maxWait = 60, data, highWaterMark, withStats = false }: options
+  ) {
     super()
     this.filepath = filepath
     this.data = data
     this.bytesPerChunk = highWaterMark || this.bytesPerChunk
     this.withStats = withStats
+    this.maxWait = maxWait
   }
   private __getId() {
     this.socket.emit('__akuma_::new::id__', (id: string) => {
@@ -49,6 +59,7 @@ class Client extends EventEmitter {
         withAck
       })
       this.emit('progress', { size: this.filesize, total: chunk.length })
+      this.__maxWaitMonitor()
       return
     }
     const stream = createReadStream(this.filepath, {
@@ -57,43 +68,77 @@ class Client extends EventEmitter {
       end
     })
     stream.read(end - start)
+    //
     stream.once('data', (chunk: Buffer) => {
-      this.socket.emit(`__akuma_::data::${this.id}__`, {
-        chunk,
-        info: {
-          size: this.filesize,
-          data: this.data
-        },
-        event: this.event,
-        withAck
-      })
+      // avoid resend extra infos after first
+      // emit
+      if (this.isFirst || this.isResume) {
+        this.socket.emit(`__akuma_::data::${this.id}__`, {
+          chunk,
+          info: {
+            size: this.filesize,
+            data: this.data
+          },
+          event: this.event,
+          withAck
+        })
+      } else {
+        this.socket.emit(`__akuma_::data::${this.id}__`, { chunk })
+      }
       stream.close()
       this.emit('progress', { size: this.filesize, total: this.chunks })
+      this.isFirst = false
+      this.isResume = false
+      this.__maxWaitMonitor()
     })
+  }
+  private __maxWaitMonitor() {
+    this.maxWaitTimer = setInterval(() => {
+      this.maxWaitCounter += 1
+      if (this.isPaused) {
+        this.__clearMaxWaitMonitor()
+        return
+      }
+      if (this.maxWaitCounter >= this.maxWait) {
+        this.socket.emit(`__akuma_::stop::__`, this.id)
+        this.__destroy()
+        this.emit('cancel', 'Response timeout')
+      }
+    }, 1000)
+  }
+  private __clearMaxWaitMonitor() {
+    if (this.maxWaitTimer) clearInterval(this.maxWaitTimer)
   }
   private __start(cb: cb) {
     this.filesize = statSync(this.filepath).size
     let withAck = typeof cb === 'function'
     this.__read(0, this.bytesPerChunk, withAck)
+
+    // listen for new request
     this.socket
       .on(`__akuma_::more::${this.id}__`, (chunks: number) => {
         if (!chunks) return
         this.chunks = chunks
         let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
         this.__read(chunks, toChunk + chunks, withAck)
+        this.__clearMaxWaitMonitor()
       })
+      // listen for resume request
       .on(`__akuma_::resume::${this.id}__`, (chunks: number | null) => {
+        this.isResume = true
+        this.__maxWaitMonitor()
         if (typeof chunks === 'number') {
           this.chunks = chunks
           let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
           this.__read(chunks, toChunk + chunks, withAck)
         } else this.__read(0, this.bytesPerChunk, withAck)
       })
+      // listen for end event
       .on(`__akuma_::end::${this.id}__`, ({ total, payload }: any) => {
         this.emit('progress', { size: this.filesize, total })
         let data = { size: this.filesize, total, payload }
-        this.emit('done', data, {})
-
+        this.emit('done', data)
+        this.__clearMaxWaitMonitor()
         if (typeof cb === 'function') {
           if (this.withStats) cb(data)
           else cb(...payload)
@@ -158,6 +203,6 @@ class Client extends EventEmitter {
     this.socket.off(`__akuma_::end::${this.id}__`, () => {})
     this.data = null
     this.id = null
+    this.__clearMaxWaitMonitor()
   }
 }
-export default Client

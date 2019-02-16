@@ -1,8 +1,8 @@
 {
   "name": "socket.io-file-stream",
-  "version": "0.2.2",
-  "description": "Socket.io ckfile stream",
-  "main": "index.ts",
+  "version": "0.2.4",
+  "description": "Socket.io file stream",
+  "main": "index.js",
   "scripts": {
     "test": "",
     "watch": "tsc -p ./tsconfig.json -w",

@@ -1,5 +1,5 @@
 const io = require('socket.io-client')('http://localhost:8090'),
-  Client = require('../client'),
+  Client = require('../client').default,
   { join } = require('path')
 
 io.on('connect', () => {
@@ -8,10 +8,11 @@ io.on('connect', () => {
 //Client is not reusable
 //once done it will be destroy
 const client = new Client(io, {
-  filepath: join(__dirname, './text.txt'),
+  filepath: '/home/akumzy/Videos/Algebra Introduction - Basic Overview - Online Crash Course Review Video Tutoria.mp4',
   data: {
     name: 'hello.txt'
-  }
+  },
+  maxWait: 30
 })
 // auto reconnect
 // as long as it's below one hour
@@ -30,7 +31,8 @@ client
   .on('pause', () => {
     console.log('pause')
   })
-  .on('cancel', () => {
+  .on('cancel', e => {
+    console.log(e)
     console.log('canceled')
   })
   .on('ready', () => {

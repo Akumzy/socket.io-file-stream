@@ -1,21 +1,41 @@
-///<reference types="node" />
-export = UploadClient
-interface UploadClient extends NodeJS.EventEmitter {
-  /**
-   * Start file upload and gets response
-   * when the upload is done through callback
-   */
-  upload(event: string, cb: (...data: any) => void): this
-  /**
-   * This event emits once it's ready to start upload
-   */
-  on(event: 'ready', listener: () => void): this
-  /**
-   * This event emits the upload progress on upload
-   * and return an object containing the upload
-   * statistics to the `listener`
-   * `size` being the file size and
-   * `total` being to total chunks uploaded
-   */
-  on(event: 'progress', listener: ({ size, total }: { size: number; total: number }) => void): this
+/// <reference types="socket.io-client" />
+import { EventEmitter } from 'events';
+interface options {
+    filepath: string;
+    data?: any;
+    highWaterMark?: number;
+    withStats?: boolean;
+    maxWait?: number;
 }
+interface cb {
+    (...data: any): void;
+}
+export default class Client extends EventEmitter {
+    private socket;
+    filesize: number;
+    private chunks;
+    id: string | null;
+    private bytesPerChunk;
+    filepath: string;
+    data: any;
+    isPaused: boolean;
+    event: string;
+    private withStats;
+    private maxWait;
+    private isResume;
+    private isFirst;
+    private maxWaitCounter;
+    private maxWaitTimer;
+    constructor(socket: SocketIOClient.Socket, { filepath, maxWait, data, highWaterMark, withStats }: options);
+    private __getId;
+    private __read;
+    private __maxWaitMonitor;
+    private __clearMaxWaitMonitor;
+    private __start;
+    upload(event: string, cb: cb): this;
+    pause(): void;
+    resume(): void;
+    stop(): void;
+    __destroy(): void;
+}
+export {};

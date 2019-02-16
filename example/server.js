@@ -1,14 +1,13 @@
 const io = require('socket.io')(8090),
-  Server = require('../server'),
-  { appendFile, pathExists } = require('fs-extra')
+  Server = require('../server').default,
+  { appendFile } = require('fs-extra')
 
 io.on('connection', socket => {
   const server = new Server(socket)
   server.on('file-upload', async ({ stream, data, ready }, ack) => {
     try {
       console.time('start')
-
-      await sleep(30000)
+      sleep(30000)
       console.timeEnd('start')
       ready()
       stream.subscribe({

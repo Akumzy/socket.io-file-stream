@@ -114,7 +114,8 @@ export default class Server {
   private __listener(id: string, resume = false) {
     const stream = new Subject<StreamPayload>()
     let isReady = false,
-      isFirst = true
+      isFirst = true,
+      _info: { size: number; data: any }
 
     const whenReady = () => {
       isReady = true
@@ -122,6 +123,7 @@ export default class Server {
 
     this.io.on(`__akuma_::data::${id}__`, async ({ chunk, info, event, withAck }: OnDataPayload) => {
       if (!this.cleaner) this.__cleaner()
+      if (info) _info = info
       let //
         uploadedChunks = 0,
         streamInstance = this.streams.get(id),
@@ -194,7 +196,7 @@ export default class Server {
         this.records.set(id, { ...record, uploadedChunks })
         streamPayload = {
           buffer: Buffer.from(chunk),
-          fileSize: info.size,
+          fileSize: _info.size,
           uploadedChunks: record.uploadedChunks,
           flag
         }
@@ -219,7 +221,7 @@ export default class Server {
          * file size then emit end else request for more
          */
 
-        if (uploadedChunks < info.size) {
+        if (uploadedChunks < _info.size) {
           streamInstance.next(streamPayload)
           this.io.emit(`__akuma_::more::${id}__`, uploadedChunks)
         } else {
