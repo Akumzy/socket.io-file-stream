@@ -10,20 +10,21 @@ const rxjs_1 = require("rxjs");
 const difference_in_minutes_1 = __importDefault(require("date-fns/difference_in_minutes"));
 const records = new Map();
 class Server {
-    constructor(io) {
+    constructor(io, eventNamespace = 'akuma') {
         this.io = io;
+        this.eventNamespace = eventNamespace;
         this.streams = new Map();
         this.handlers = new Map();
         this.cleaner = null;
         this.canceled = {};
-        this.io.on('__akuma_::new::id__', (ack) => {
+        this.io.on(`__${this.eventNamespace}_::new::id__`, (ack) => {
             this.__createNew(ack);
         });
-        this.io.on(`__akuma_::resume::__`, (id) => {
+        this.io.on(`__${this.eventNamespace}_::resume::__`, (id) => {
             let record = this.records.get(id);
             if (record) {
                 this.records.set(id, { ...record, active: false });
-                this.io.emit(`__akuma_::resume::${id}__`, record.uploadedChunks);
+                this.io.emit(`__${this.eventNamespace}_::resume::${id}__`, record.uploadedChunks);
                 let streamInstance = this.streams.get(id);
                 if (!streamInstance) {
                     this.__createNew(id);
@@ -31,10 +32,10 @@ class Server {
             }
             else {
                 this.__createNew(id);
-                this.io.emit(`__akuma_::resume::${id}__`);
+                this.io.emit(`__${this.eventNamespace}_::resume::${id}__`);
             }
         });
-        this.io.on(`__akuma_::stop::__`, (id) => {
+        this.io.on(`__${this.eventNamespace}_::stop::__`, (id) => {
             if (this.records.has(id)) {
                 let streamInstance = this.streams.get(id);
                 if (streamInstance)
@@ -72,7 +73,7 @@ class Server {
         }
     }
     cancel(id) {
-        this.io.removeAllListeners(`__akuma_::data::${id}__`);
+        this.io.removeAllListeners(`__${this.eventNamespace}_::data::${id}__`);
         this.canceled[id] = true;
     }
     __listener(id, resume = false) {
@@ -81,7 +82,7 @@ class Server {
         const whenReady = () => {
             isReady = true;
         };
-        this.io.on(`__akuma_::data::${id}__`, async ({ chunk, info, event, withAck }) => {
+        this.io.on(`__${this.eventNamespace}_::data::${id}__`, async ({ chunk, info, event, withAck }) => {
             if (!this.cleaner)
                 this.__cleaner();
             if (info)
@@ -131,7 +132,7 @@ class Server {
                             handler({ stream: streamInstance, data: info.data, ready: whenReady, id }, (...ack) => {
                                 let r = self.records.get(id);
                                 if (r)
-                                    self.io.emit(`__akuma_::end::${id}__`, {
+                                    self.io.emit(`__${this.eventNamespace}_::end::${id}__`, {
                                         payload: ack,
                                         total: r.uploadedChunks
                                     });
@@ -174,7 +175,7 @@ class Server {
                 }
                 if (uploadedChunks < _info.size) {
                     streamInstance.next(streamPayload);
-                    this.io.emit(`__akuma_::more::${id}__`, uploadedChunks);
+                    this.io.emit(`__${this.eventNamespace}_::more::${id}__`, uploadedChunks);
                 }
                 else {
                     streamInstance.next(streamPayload);

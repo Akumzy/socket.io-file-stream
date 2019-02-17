@@ -4,9 +4,10 @@ const events_1 = require("events");
 const fs_1 = require("fs");
 const date_fns_1 = require("date-fns");
 class Client extends events_1.EventEmitter {
-    constructor(socket, { filepath, maxWait = 60, data, highWaterMark, withStats = false }) {
+    constructor(socket, { filepath, maxWait = 60, data, highWaterMark, withStats = false }, eventNamespace = 'akuma') {
         super();
         this.socket = socket;
+        this.eventNamespace = eventNamespace;
         this.filesize = 0;
         this.chunks = 0;
         this.id = null;
@@ -24,7 +25,7 @@ class Client extends events_1.EventEmitter {
         this.maxWait = maxWait;
     }
     __getId() {
-        this.socket.emit('__akuma_::new::id__', (id) => {
+        this.socket.emit(`__${this.eventNamespace}_::new::id__`, (id) => {
             if (this.id)
                 return;
             this.id = id;
@@ -36,7 +37,7 @@ class Client extends events_1.EventEmitter {
             return;
         if (this.filesize < this.bytesPerChunk) {
             let chunk = fs_1.readFileSync(this.filepath);
-            this.socket.emit(`__akuma_::data::${this.id}__`, {
+            this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, {
                 chunk,
                 info: {
                     size: this.filesize,
@@ -57,7 +58,7 @@ class Client extends events_1.EventEmitter {
         stream.read(end - start);
         stream.once('data', (chunk) => {
             if (this.isFirst || this.isResume) {
-                this.socket.emit(`__akuma_::data::${this.id}__`, {
+                this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, {
                     chunk,
                     info: {
                         size: this.filesize,
@@ -68,7 +69,7 @@ class Client extends events_1.EventEmitter {
                 });
             }
             else {
-                this.socket.emit(`__akuma_::data::${this.id}__`, { chunk });
+                this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, { chunk });
             }
             stream.close();
             this.emit('progress', { size: this.filesize, total: this.chunks });
@@ -85,7 +86,7 @@ class Client extends events_1.EventEmitter {
                 return;
             }
             if (this.maxWaitCounter >= this.maxWait) {
-                this.socket.emit(`__akuma_::stop::__`, this.id);
+                this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id);
                 this.__destroy();
                 this.emit('cancel', 'Response timeout');
             }
@@ -100,7 +101,7 @@ class Client extends events_1.EventEmitter {
         let withAck = typeof cb === 'function';
         this.__read(0, this.bytesPerChunk, withAck);
         this.socket
-            .on(`__akuma_::more::${this.id}__`, (chunks) => {
+            .on(`__${this.eventNamespace}_::more::${this.id}__`, (chunks) => {
             if (!chunks)
                 return;
             this.chunks = chunks;
@@ -108,7 +109,7 @@ class Client extends events_1.EventEmitter {
             this.__read(chunks, toChunk + chunks, withAck);
             this.__clearMaxWaitMonitor();
         })
-            .on(`__akuma_::resume::${this.id}__`, (chunks) => {
+            .on(`__${this.eventNamespace}_::resume::${this.id}__`, (chunks) => {
             this.isResume = true;
             this.__maxWaitMonitor();
             if (typeof chunks === 'number') {
@@ -119,7 +120,7 @@ class Client extends events_1.EventEmitter {
             else
                 this.__read(0, this.bytesPerChunk, withAck);
         })
-            .on(`__akuma_::end::${this.id}__`, ({ total, payload }) => {
+            .on(`__${this.eventNamespace}_::end::${this.id}__`, ({ total, payload }) => {
             this.emit('progress', { size: this.filesize, total });
             let data = { size: this.filesize, total, payload };
             this.emit('done', data);
@@ -178,18 +179,18 @@ class Client extends events_1.EventEmitter {
             return;
         this.isPaused = false;
         this.emit('resume');
-        this.socket.emit(`__akuma_::resume::__`, this.id);
+        this.socket.emit(`__${this.eventNamespace}_::resume::__`, this.id);
     }
     stop() {
-        this.socket.emit(`__akuma_::stop::__`, this.id);
+        this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id);
         this.__destroy();
         this.emit('cancel');
     }
     __destroy() {
-        this.socket.off(`__akuma_::more::${this.id}__`, () => { });
-        this.socket.off(`__akuma_::data::${this.id}__`, () => { });
-        this.socket.off(`__akuma_::resume::${this.id}__`, () => { });
-        this.socket.off(`__akuma_::end::${this.id}__`, () => { });
+        this.socket.off(`__${this.eventNamespace}_::more::${this.id}__`, () => { });
+        this.socket.off(`__${this.eventNamespace}_::data::${this.id}__`, () => { });
+        this.socket.off(`__${this.eventNamespace}_::resume::${this.id}__`, () => { });
+        this.socket.off(`__${this.eventNamespace}_::end::${this.id}__`, () => { });
         this.data = null;
         this.id = null;
         this.__clearMaxWaitMonitor();

@@ -43,32 +43,32 @@ export default class Server {
   private handlers: Map<string, Handler> = new Map()
   private cleaner: NodeJS.Timeout | null = null
   private canceled: { [id: string]: boolean } = {}
-  constructor(private io: SocketIO.Socket) {
+  constructor(private io: SocketIO.Socket, private eventNamespace = 'akuma') {
     //create id
-    this.io.on('__akuma_::new::id__', (ack: cb) => {
+    this.io.on(`__${this.eventNamespace}_::new::id__`, (ack: cb) => {
       this.__createNew(ack)
     })
     //resume
-    this.io.on(`__akuma_::resume::__`, (id: string) => {
+    this.io.on(`__${this.eventNamespace}_::resume::__`, (id: string) => {
       //on resume check is this id instance still available
       //then return the total transfered buffer else
       //return nothing
       let record = this.records.get(id)
       if (record) {
         this.records.set(id, { ...record, active: false })
-        this.io.emit(`__akuma_::resume::${id}__`, record.uploadedChunks)
+        this.io.emit(`__${this.eventNamespace}_::resume::${id}__`, record.uploadedChunks)
         let streamInstance = this.streams.get(id)
         if (!streamInstance) {
           this.__createNew(id)
         }
       } else {
         this.__createNew(id)
-        this.io.emit(`__akuma_::resume::${id}__`)
+        this.io.emit(`__${this.eventNamespace}_::resume::${id}__`)
       }
     })
 
     // stop
-    this.io.on(`__akuma_::stop::__`, (id: string) => {
+    this.io.on(`__${this.eventNamespace}_::stop::__`, (id: string) => {
       //close the stream
       if (this.records.has(id)) {
         let streamInstance = this.streams.get(id)
@@ -108,7 +108,7 @@ export default class Server {
    * cancel
    */
   public cancel(id: string) {
-    this.io.removeAllListeners(`__akuma_::data::${id}__`)
+    this.io.removeAllListeners(`__${this.eventNamespace}_::data::${id}__`)
     this.canceled[id] = true
   }
   private __listener(id: string, resume = false) {
@@ -121,7 +121,7 @@ export default class Server {
       isReady = true
     }
 
-    this.io.on(`__akuma_::data::${id}__`, async ({ chunk, info, event, withAck }: OnDataPayload) => {
+    this.io.on(`__${this.eventNamespace}_::data::${id}__`, async ({ chunk, info, event, withAck }: OnDataPayload) => {
       if (!this.cleaner) this.__cleaner()
       if (info) _info = info
       let //
@@ -174,7 +174,7 @@ export default class Server {
               handler({ stream: streamInstance, data: info.data, ready: whenReady, id }, (...ack: any[]) => {
                 let r = self.records.get(id)
                 if (r)
-                  self.io.emit(`__akuma_::end::${id}__`, {
+                  self.io.emit(`__${this.eventNamespace}_::end::${id}__`, {
                     payload: ack,
                     total: r.uploadedChunks
                   })
@@ -223,7 +223,7 @@ export default class Server {
 
         if (uploadedChunks < _info.size) {
           streamInstance.next(streamPayload)
-          this.io.emit(`__akuma_::more::${id}__`, uploadedChunks)
+          this.io.emit(`__${this.eventNamespace}_::more::${id}__`, uploadedChunks)
         } else {
           streamInstance.next(streamPayload)
           sleep(100)

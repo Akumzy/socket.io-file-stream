@@ -27,11 +27,12 @@ declare type Handler = ({ stream, data, ready, id }: {
 }, ack?: cb) => void;
 export default class Server {
     private io;
+    private eventNamespace;
     private streams;
     private handlers;
     private cleaner;
     private canceled;
-    constructor(io: SocketIO.Socket);
+    constructor(io: SocketIO.Socket, eventNamespace?: string);
     readonly records: Map<string, UploadRecord>;
     private __createNew;
     on(event: string, handler: Handler): void;

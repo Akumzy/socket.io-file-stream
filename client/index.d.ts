@@ -12,6 +12,7 @@ interface cb {
 }
 export default class Client extends EventEmitter {
     private socket;
+    private eventNamespace;
     filesize: number;
     private chunks;
     id: string | null;
@@ -26,7 +27,7 @@ export default class Client extends EventEmitter {
     private isFirst;
     private maxWaitCounter;
     private maxWaitTimer;
-    constructor(socket: SocketIOClient.Socket, { filepath, maxWait, data, highWaterMark, withStats }: options);
+    constructor(socket: SocketIOClient.Socket, { filepath, maxWait, data, highWaterMark, withStats }: options, eventNamespace?: string);
     private __getId;
     private __read;
     private __maxWaitMonitor;
