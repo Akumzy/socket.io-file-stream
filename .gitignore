@@ -1,2 +1,5 @@
 node_modules
 dist
+example
+!example/client.js
+!example/server.js

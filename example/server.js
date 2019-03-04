@@ -1,5 +1,5 @@
 const io = require('socket.io')(8090),
-  Server = require('../server').default,
+  Server = require('../dist/server').default,
   { appendFile } = require('fs-extra')
 
 io.on('connection', socket => {

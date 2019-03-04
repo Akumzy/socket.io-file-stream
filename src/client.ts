@@ -94,6 +94,7 @@ export default class Client extends EventEmitter {
     })
   }
   private __maxWaitMonitor() {
+    if (this.maxWaitTimer) clearInterval(this.maxWaitTimer)
     this.maxWaitTimer = setInterval(() => {
       this.maxWaitCounter += 1
       if (this.isPaused) {
@@ -102,16 +103,16 @@ export default class Client extends EventEmitter {
       }
       if (this.maxWaitCounter >= this.maxWait) {
         this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
-        this.emit('cancel', 'Response timeout id=' + this.id)
+        this.emit('cancel', '[local] Response timeout id=' + this.id)
         this.__destroy()
       }
     }, 1000)
   }
   private __clearMaxWaitMonitor() {
     if (this.maxWaitTimer) {
+      clearInterval(this.maxWaitTimer)
       this.maxWaitTimer = null
       this.maxWaitCounter = 0
-      clearInterval(this.maxWaitTimer)
     }
   }
   private __start(cb: cb) {
@@ -125,8 +126,9 @@ export default class Client extends EventEmitter {
         if (!chunks) return
         this.chunks = chunks
         let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-        this.__read(chunks, toChunk + chunks, withAck)
         this.__clearMaxWaitMonitor()
+        this.__read(chunks, toChunk + chunks, withAck)
+        console.log('hey')
       })
       // listen for resume request
       .on(`__${this.eventNamespace}_::resume::${this.id}__`, (chunks: number | null) => {

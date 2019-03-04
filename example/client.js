@@ -1,5 +1,5 @@
 const io = require('socket.io-client')('http://localhost:8090'),
-  Client = require('../client').default,
+  Client = require('../dist/client').default,
   { join } = require('path')
 
 io.on('connect', () => {
