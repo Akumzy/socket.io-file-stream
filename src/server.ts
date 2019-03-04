@@ -1,4 +1,4 @@
-import uuid from '../uuid'
+import uuid from './uuid'
 import addMinutes from 'date-fns/add_minutes'
 import isAfter from 'date-fns/is_after'
 import { Subject } from 'rxjs'

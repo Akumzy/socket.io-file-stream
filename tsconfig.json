@@ -3,13 +3,12 @@
     "target": "ESNEXT",
     "module": "commonjs",
     "noImplicitAny": true,
-    "removeComments": true,
-    "declaration": true,
-    "rootDir": ".",
-    "strict": true,
-    "moduleResolution": "node",
+    "removeComments": false,
+    "resolveJsonModule": false,
     "esModuleInterop": true,
-    "sourceMap": false
+    "sourceMap": false,
+    "declaration": true,
+    "outDir": "dist"
   },
-  "include": ["*.ts", "index.ts", "uuid.ts"]
+  "include": ["src/**/*"]
 }

@@ -48,7 +48,7 @@ export default class Client extends EventEmitter {
   }
   private __read(start: number, end: number, withAck = false) {
     if (this.isPaused) return
-    if (this.filesize < this.bytesPerChunk) {
+    if (this.filesize <= this.bytesPerChunk) {
       let chunk = readFileSync(this.filepath)
       this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, {
         chunk,
@@ -103,9 +103,9 @@ export default class Client extends EventEmitter {
       if (this.maxWaitCounter >= this.maxWait) {
         this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
         this.__destroy()
-        this.emit('cancel', 'Response timeout')
+        this.emit('cancel', 'Response timeout id=' + this.id)
       }
-    }, 1000)
+    }, this.maxWait)
   }
   private __clearMaxWaitMonitor() {
     if (this.maxWaitTimer) clearInterval(this.maxWaitTimer)
@@ -162,7 +162,7 @@ export default class Client extends EventEmitter {
                 this.__getId()
                 if (Date.now() >= whenToAbort) {
                   this.__destroy()
-                  this.emit('cancel')
+                  this.emit('cancel', 'Get id timeout id=' + this.id)
                 }
               }
             }, 5000)
@@ -195,7 +195,7 @@ export default class Client extends EventEmitter {
   public stop() {
     this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
     this.__destroy()
-    this.emit('cancel')
+    this.emit('cancel', 'Stopped id=' + this.id)
   }
   public __destroy() {
     this.socket.off(`__${this.eventNamespace}_::more::${this.id}__`, () => {})
