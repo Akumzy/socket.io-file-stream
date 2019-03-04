@@ -1,6 +1,6 @@
 {
   "name": "socket.io-file-stream",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Socket.io file stream",
   "main": "dist/index.js",
   "scripts": {

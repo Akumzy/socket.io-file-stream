@@ -102,8 +102,8 @@ export default class Client extends EventEmitter {
       }
       if (this.maxWaitCounter >= this.maxWait) {
         this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
-        this.__destroy()
         this.emit('cancel', 'Response timeout id=' + this.id)
+        this.__destroy()
       }
     }, this.maxWait)
   }
