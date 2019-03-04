@@ -128,7 +128,6 @@ export default class Client extends EventEmitter {
         let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
         this.__clearMaxWaitMonitor()
         this.__read(chunks, toChunk + chunks, withAck)
-        console.log('hey')
       })
       // listen for resume request
       .on(`__${this.eventNamespace}_::resume::${this.id}__`, (chunks: number | null) => {
