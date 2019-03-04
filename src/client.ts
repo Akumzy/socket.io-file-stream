@@ -105,10 +105,14 @@ export default class Client extends EventEmitter {
         this.emit('cancel', 'Response timeout id=' + this.id)
         this.__destroy()
       }
-    }, this.maxWait)
+    }, 1000)
   }
   private __clearMaxWaitMonitor() {
-    if (this.maxWaitTimer) clearInterval(this.maxWaitTimer)
+    if (this.maxWaitTimer) {
+      this.maxWaitTimer = null
+      this.maxWaitCounter = 0
+      clearInterval(this.maxWaitTimer)
+    }
   }
   private __start(cb: cb) {
     this.filesize = statSync(this.filepath).size
