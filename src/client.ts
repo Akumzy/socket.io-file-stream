@@ -1,17 +1,15 @@
 import { EventEmitter } from 'events'
 import { createReadStream, existsSync, statSync, readFileSync } from 'fs'
-import { addSeconds } from 'date-fns'
-interface options {
+import addSeconds from 'date-fns/add_seconds'
+
+interface ClientOptions {
   filepath: string
   data?: any
   highWaterMark?: number
   withStats?: boolean
   maxWait?: number
 }
-
-interface cb {
-  (...data: any): void
-}
+type cb = (...data: any) => void
 export default class Client extends EventEmitter {
   filesize = 0
   private chunks = 0
@@ -29,7 +27,7 @@ export default class Client extends EventEmitter {
   private maxWaitTimer: NodeJS.Timeout | null = null
   constructor(
     private socket: SocketIOClient.Socket,
-    { filepath, maxWait = 60, data, highWaterMark, withStats = false }: options,
+    { filepath, maxWait = 60, data, highWaterMark, withStats = false }: ClientOptions,
     private eventNamespace = 'akuma'
   ) {
     super()
@@ -71,8 +69,7 @@ export default class Client extends EventEmitter {
     stream.read(end - start)
     //
     stream.once('data', (chunk: Buffer) => {
-      // avoid resend extra infos after first
-      // emit
+      // avoid resending extra infos after first upload
       if (this.isFirst || this.isResume) {
         this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, {
           chunk,

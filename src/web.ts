@@ -1,13 +1,5 @@
-interface socket {
-  emit: (event: string, ...arg: any) => socket
-  on: (event: string, ...arg: any) => socket
-  once: (event: string, ...arg: any) => socket
-  off: (event: string, listener: () => void) => void
-}
-
-interface cb {
-  (...data: any): void
-}
+import addSeconds from 'date-fns/add_seconds'
+type cb = (...data: any) => void
 interface options {
   file: File
   data?: any
@@ -15,19 +7,27 @@ interface options {
   withStats?: boolean
 }
 class ClientWeb {
-  filesize: number = 0
-  chunks: number = 0
+  private isResume: boolean
+  filesize = 0
+  private chunks = 0
   id: string | null = null
-  bytesPerChunk: number = 100e3 //100 kb
+  private bytesPerChunk = 102400 //100kb
   file: File
   data: any
   isPaused: boolean = false
-  socket: socket
   event: string = ''
   events: Map<string, cb[]> = new Map()
   fileReader: FileReader = new FileReader()
-  withStats: boolean
-  constructor(socket: socket, { file, data, highWaterMark, withStats = false }: options) {
+  private withStats: boolean
+  private maxWait: number
+  private isFirst = true
+  private maxWaitCounter = 0
+  private maxWaitTimer: NodeJS.Timeout | null = null
+  constructor(
+    private socket: SocketIOClient.Socket,
+    { file, data, highWaterMark, withStats = false }: options,
+    private eventNamespace = 'akuma'
+  ) {
     this.file = file
     this.filesize = file.size
     this.socket = socket
@@ -35,51 +35,70 @@ class ClientWeb {
     this.bytesPerChunk = highWaterMark || this.bytesPerChunk
     this.withStats = withStats
   }
-  __getId() {
-    this.socket.emit('__akuma_::new::id__', (id: string) => {
+  private __getId() {
+    this.socket.emit(`__${this.eventNamespace}_::new::id__`, (id: string) => {
       if (this.id) return
       this.id = id
       this.emit('ready')
     })
   }
 
-  __read(start: number, end: number) {
+  __read(start: number, end: number, withAck = false) {
     if (this.isPaused) return
     const slice = this.file.slice(start, end)
     this.fileReader.readAsArrayBuffer(slice)
 
     this.fileReader.onload = () => {
-      this.socket.emit(`__akuma_::data::${this.id}__`, {
-        chunk: this.fileReader.result,
-        data: {
-          size: this.filesize,
-          data: this.data
-        },
-        event: this.event
-      })
+      // avoid resending extra infos after first upload
+      if (this.isFirst || this.isResume) {
+        this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, {
+          chunk: this.fileReader.result,
+          info: {
+            size: this.filesize,
+            data: this.data
+          },
+          event: this.event,
+          withAck
+        })
+      } else {
+        this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, { chunk: this.fileReader.result })
+      }
       this.emit('progress', { size: this.filesize, total: this.chunks })
+      this.isFirst = false
+      this.isResume = false
+      this.__maxWaitMonitor()
     }
   }
   __start(cb: cb) {
+    let withAck = typeof cb === 'function'
     this.__read(0, this.bytesPerChunk)
+    this.__read(0, this.bytesPerChunk, withAck)
+
+    // listen for new request
     this.socket
-      .on(`__akuma_::more::${this.id}__`, (chunks: number) => {
+      .on(`__${this.eventNamespace}_::more::${this.id}__`, (chunks: number) => {
         if (!chunks) return
         this.chunks = chunks
         let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-        this.__read(chunks, toChunk + chunks)
+        this.__clearMaxWaitMonitor()
+        this.__read(chunks, toChunk + chunks, withAck)
       })
-      .on(`__akuma_::resume::${this.id}__`, (chunks: number | null) => {
+      // listen for resume request
+      .on(`__${this.eventNamespace}_::resume::${this.id}__`, (chunks: number | null) => {
+        this.isResume = true
+        this.__maxWaitMonitor()
         if (typeof chunks === 'number') {
           this.chunks = chunks
           let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-          this.__read(chunks, toChunk + chunks)
-        } else this.__read(0, this.bytesPerChunk)
+          this.__read(chunks, toChunk + chunks, withAck)
+        } else this.__read(0, this.bytesPerChunk, withAck)
       })
-      .on(`__akuma_::end::${this.id}__`, ({ total, payload }: any) => {
+      // listen for end event
+      .on(`__${this.eventNamespace}_::end::${this.id}__`, ({ total, payload }: any) => {
         this.emit('progress', { size: this.filesize, total })
         let data = { size: this.filesize, total, payload }
         this.emit('done', data)
+        this.__clearMaxWaitMonitor()
         if (typeof cb === 'function') {
           if (this.withStats) cb(data)
           else cb(...payload)
@@ -91,15 +110,16 @@ class ClientWeb {
     this.event = event
     if (this.id) this.__start(cb)
     else {
+      // get an id from server
       this.__getId()
-      let whenToAbort = new Date().setMinutes(1),
+      let whenToAbort = addSeconds(new Date(), 30).getTime(),
         timer = setInterval(() => {
           if (this.id) clearInterval(timer)
           else {
             this.__getId()
             if (Date.now() >= whenToAbort) {
               this.__destroy()
-              this.emit('cancel')
+              this.emit('cancel', 'Get id timeout id=' + this.id)
             }
           }
         }, 5000)
@@ -110,6 +130,28 @@ class ClientWeb {
     }
 
     return this
+  }
+  private __maxWaitMonitor() {
+    if (this.maxWaitTimer) clearInterval(this.maxWaitTimer)
+    this.maxWaitTimer = setInterval(() => {
+      this.maxWaitCounter += 1
+      if (this.isPaused) {
+        this.__clearMaxWaitMonitor()
+        return
+      }
+      if (this.maxWaitCounter >= this.maxWait) {
+        this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
+        this.emit('cancel', '[local] Response timeout id=' + this.id)
+        this.__destroy()
+      }
+    }, 1000)
+  }
+  private __clearMaxWaitMonitor() {
+    if (this.maxWaitTimer) {
+      clearInterval(this.maxWaitTimer)
+      this.maxWaitTimer = null
+      this.maxWaitCounter = 0
+    }
   }
   on(eventName: string, cb: cb) {
     if (!this.events.get(eventName)) {
@@ -128,29 +170,30 @@ class ClientWeb {
       })
     }
   }
-  pause() {
+
+  public pause() {
     this.isPaused = true
     this.emit('pause')
   }
-  resume() {
+  public resume() {
     if (!this.id) return
     this.isPaused = false
     this.emit('resume')
-    this.socket.emit(`__akuma_::resume::__`, this.id)
+    this.socket.emit(`__${this.eventNamespace}_::resume::__`, this.id)
   }
-  stop() {
-    this.socket.emit(`__akuma_::stop::__`, this.id)
+  public stop() {
+    this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
     this.__destroy()
-    this.emit('cancel')
+    this.emit('cancel', 'Stopped id=' + this.id)
   }
-  __destroy() {
-    this.socket.off(`__akuma_::more::${this.id}__`, () => {})
-    this.socket.off(`__akuma_::data::${this.id}__`, () => {})
-    this.socket.off(`__akuma_::resume::${this.id}__`, () => {})
-    this.socket.off(`__akuma_::end::${this.id}__`, () => {})
-    this.events.clear()
+  public __destroy() {
+    this.socket.off(`__${this.eventNamespace}_::more::${this.id}__`, () => {})
+    this.socket.off(`__${this.eventNamespace}_::data::${this.id}__`, () => {})
+    this.socket.off(`__${this.eventNamespace}_::resume::${this.id}__`, () => {})
+    this.socket.off(`__${this.eventNamespace}_::end::${this.id}__`, () => {})
     this.data = null
     this.id = null
+    this.__clearMaxWaitMonitor()
   }
 }
 export default ClientWeb
