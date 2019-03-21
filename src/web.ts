@@ -43,7 +43,7 @@ class ClientWeb {
     })
   }
 
-  __read(start: number, end: number, withAck = false) {
+  __read(start: number, end: number) {
     if (this.isPaused) return
     const slice = this.file.slice(start, end)
     this.fileReader.readAsArrayBuffer(slice)
@@ -57,8 +57,7 @@ class ClientWeb {
             size: this.filesize,
             data: this.data
           },
-          event: this.event,
-          withAck
+          event: this.event
         })
       } else {
         this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, { chunk: this.fileReader.result })
@@ -70,9 +69,8 @@ class ClientWeb {
     }
   }
   __start(cb: cb) {
-    let withAck = typeof cb === 'function'
     this.__read(0, this.bytesPerChunk)
-    this.__read(0, this.bytesPerChunk, withAck)
+    this.__read(0, this.bytesPerChunk)
 
     // listen for new request
     this.socket
@@ -81,7 +79,7 @@ class ClientWeb {
         this.chunks = chunks
         let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
         this.__clearMaxWaitMonitor()
-        this.__read(chunks, toChunk + chunks, withAck)
+        this.__read(chunks, toChunk + chunks)
       })
       // listen for resume request
       .on(`__${this.eventNamespace}_::resume::${this.id}__`, (chunks: number | null) => {
@@ -90,8 +88,8 @@ class ClientWeb {
         if (typeof chunks === 'number') {
           this.chunks = chunks
           let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-          this.__read(chunks, toChunk + chunks, withAck)
-        } else this.__read(0, this.bytesPerChunk, withAck)
+          this.__read(chunks, toChunk + chunks)
+        } else this.__read(0, this.bytesPerChunk)
       })
       // listen for end event
       .on(`__${this.eventNamespace}_::end::${this.id}__`, ({ total, payload }: any) => {

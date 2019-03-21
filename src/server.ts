@@ -183,11 +183,9 @@ export default class Server {
             }
             if (resume) {
               // check if this has an acknowledgement
-              if (withAck) callHandler(handler, streamInstance)
-              else handler({ stream: streamInstance, data: info.data, ready: whenReady, id })
+             callHandler(handler, streamInstance)
             } else {
-              if (withAck) callHandler(handler, streamInstance)
-              else handler({ stream: streamInstance, data: info.data, ready: whenReady, id })
+             callHandler(handler, streamInstance)
             }
             this.records.set(id, { ...record, dirty: true, uploadedChunks, active: true })
           }
