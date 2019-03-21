@@ -70,7 +70,6 @@ class ClientWeb {
   }
   __start(cb: cb) {
     this.__read(0, this.bytesPerChunk)
-    this.__read(0, this.bytesPerChunk)
 
     // listen for new request
     this.socket
