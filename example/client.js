@@ -8,7 +8,7 @@ io.on('connect', () => {
 //Client is not reusable
 //once done it will be destroy
 const client = new Client(io, {
-  filepath: '/home/akumzy/Videos/Algebra Introduction - Basic Overview - Online Crash Course Review Video Tutoria.mp4',
+  filepath: 'C:\\Users\\akuma\\Downloads\\aa.mp4',
   data: {
     name: 'hello.txt'
   },

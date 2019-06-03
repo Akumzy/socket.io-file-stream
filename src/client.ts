@@ -108,14 +108,14 @@ export default class Client extends EventEmitter {
       this.maxWaitCounter = 0
     }
   }
-  private __onMore(offset: number) {
+  private __onMore = (offset: number) => {
     if (!offset) return
     this.chunks = offset
     let toChunk = Math.min(this.bytesPerChunk, this.filesize - offset)
     this.__clearMaxWaitMonitor()
     this.__read(offset, toChunk + offset)
   }
-  private __onResume(offset: number | null) {
+  private __onResume = (offset: number | null) => {
     this.isResume = true
     this.__maxWaitMonitor()
     if (typeof offset === 'number') {
@@ -124,7 +124,7 @@ export default class Client extends EventEmitter {
       this.__read(offset, toChunk + offset)
     } else this.__read(0, this.bytesPerChunk)
   }
-  private __onEnd({ total, payload }: any) {
+  private __onEnd = ({ total, payload }: any) => {
     this.emit('progress', { size: this.filesize, total })
     let data = { size: this.filesize, total, payload }
     this.emit('done', data)
