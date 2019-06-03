@@ -25,6 +25,7 @@ export default class Client extends EventEmitter {
   private isFirst = true
   private maxWaitCounter = 0
   private maxWaitTimer: NodeJS.Timeout | null = null
+  private callback: cb
   constructor(
     private socket: SocketIOClient.Socket,
     { filepath, maxWait = 60, data, highWaterMark, withStats = false }: ClientOptions,
@@ -69,18 +70,15 @@ export default class Client extends EventEmitter {
     //
     stream.once('data', (chunk: Buffer) => {
       // avoid resending extra infos after first upload
-      if (this.isFirst || this.isResume) {
-        this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, {
-          chunk,
-          info: {
-            size: this.filesize,
-            data: this.data
-          },
-          event: this.event
-        })
-      } else {
-        this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, { chunk })
-      }
+      this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, {
+        chunk,
+        info: {
+          size: this.filesize,
+          data: this.data
+        },
+        event: this.event
+      })
+
       stream.close()
       this.emit('progress', { size: this.filesize, total: this.chunks })
       this.isFirst = false
@@ -110,47 +108,50 @@ export default class Client extends EventEmitter {
       this.maxWaitCounter = 0
     }
   }
-  private __start(cb: cb) {
+  private __onMore(offset: number) {
+    if (!offset) return
+    this.chunks = offset
+    let toChunk = Math.min(this.bytesPerChunk, this.filesize - offset)
+    this.__clearMaxWaitMonitor()
+    this.__read(offset, toChunk + offset)
+  }
+  private __onResume(offset: number | null) {
+    this.isResume = true
+    this.__maxWaitMonitor()
+    if (typeof offset === 'number') {
+      this.chunks = offset
+      let toChunk = Math.min(this.bytesPerChunk, this.filesize - offset)
+      this.__read(offset, toChunk + offset)
+    } else this.__read(0, this.bytesPerChunk)
+  }
+  private __onEnd({ total, payload }: any) {
+    this.emit('progress', { size: this.filesize, total })
+    let data = { size: this.filesize, total, payload }
+    this.emit('done', data)
+    this.__clearMaxWaitMonitor()
+    if (typeof this.callback === 'function') {
+      if (this.withStats) this.callback(data)
+      else this.callback(...payload)
+    }
+    this.__destroy()
+  }
+  private __start() {
     this.filesize = statSync(this.filepath).size
     this.__read(0, this.bytesPerChunk)
-
     // listen for new request
     this.socket
-      .on(`__${this.eventNamespace}_::more::${this.id}__`, (chunks: number) => {
-        if (!chunks) return
-        this.chunks = chunks
-        let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-        this.__clearMaxWaitMonitor()
-        this.__read(chunks, toChunk + chunks)
-      })
+      .on(`__${this.eventNamespace}_::more::${this.id}__`, this.__onMore)
       // listen for resume request
-      .on(`__${this.eventNamespace}_::resume::${this.id}__`, (chunks: number | null) => {
-        this.isResume = true
-        this.__maxWaitMonitor()
-        if (typeof chunks === 'number') {
-          this.chunks = chunks
-          let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-          this.__read(chunks, toChunk + chunks)
-        } else this.__read(0, this.bytesPerChunk)
-      })
+      .on(`__${this.eventNamespace}_::resume::${this.id}__`, this.__onResume)
       // listen for end event
-      .on(`__${this.eventNamespace}_::end::${this.id}__`, ({ total, payload }: any) => {
-        this.emit('progress', { size: this.filesize, total })
-        let data = { size: this.filesize, total, payload }
-        this.emit('done', data)
-        this.__clearMaxWaitMonitor()
-        if (typeof cb === 'function') {
-          if (this.withStats) cb(data)
-          else cb(...payload)
-        }
-        this.__destroy()
-      })
+      .on(`__${this.eventNamespace}_::end::${this.id}__`, this.__onEnd)
   }
   public upload(event: string, cb: cb) {
+    this.callback = cb
     this.event = event
     if (typeof this.filepath === 'string') {
       if (existsSync(this.filepath)) {
-        if (this.id) this.__start(cb)
+        if (this.id) this.__start()
         else {
           // get an id from server
           this.__getId()
@@ -167,7 +168,7 @@ export default class Client extends EventEmitter {
             }, 5000)
           this.once('ready', () => {
             clearInterval(timer)
-            this.__start(cb)
+            this.__start()
           })
         }
       } else {
@@ -197,10 +198,9 @@ export default class Client extends EventEmitter {
     this.emit('cancel', 'Stopped id=' + this.id)
   }
   public __destroy() {
-    this.socket.off(`__${this.eventNamespace}_::more::${this.id}__`, () => {})
-    this.socket.off(`__${this.eventNamespace}_::data::${this.id}__`, () => {})
-    this.socket.off(`__${this.eventNamespace}_::resume::${this.id}__`, () => {})
-    this.socket.off(`__${this.eventNamespace}_::end::${this.id}__`, () => {})
+    this.socket.off(`__${this.eventNamespace}_::more::${this.id}__`, this.__onMore)
+      .off(`__${this.eventNamespace}_::resume::${this.id}__`, this.__onResume)
+      .off(`__${this.eventNamespace}_::end::${this.id}__`, this.__onEnd)
     this.data = null
     this.id = null
     this.__clearMaxWaitMonitor()

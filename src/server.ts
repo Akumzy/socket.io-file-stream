@@ -121,7 +121,7 @@ export default class Server {
       isReady = true
     }
 
-    this.io.on(`__${this.eventNamespace}_::data::${id}__`, async ({ chunk, info, event, withAck }: OnDataPayload) => {
+    this.io.on(`__${this.eventNamespace}_::data::${id}__`, async ({ chunk, info, event }: OnDataPayload) => {
       if (!this.cleaner) this.__cleaner()
       if (info) _info = info
       let //
