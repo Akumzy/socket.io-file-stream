@@ -12,8 +12,8 @@
         <input type="file" name="upload" id="upload" onchange="onChange(this)">
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.1.1/socket.io.js"></script>
-    <script src="../dist/web.js"></script>
-    <script>
+    <script type="module">
+        import * as ClientWeb from '../dist/web.js';
         const socket = io('http://localhost:8090')
         socket.on('connect', () => {
             console.log('connected');

@@ -6,20 +6,18 @@ interface ClientOptions {
   filepath: string
   data?: any
   highWaterMark?: number
-  withStats?: boolean
   maxWait?: number
 }
 type cb = (...data: any) => void
 export default class Client extends EventEmitter {
   filesize = 0
-  private chunks = 0
   id: string | null = null
-  private bytesPerChunk = 102400 //100kb
   filepath: string
   data: any
   isPaused: boolean = false
   event: string = ''
-  private withStats: boolean
+  private bytesPerChunk = 102400 //100kb
+  private chunks = 0
   private maxWait: number
   private isResume = true
   private isFirst = true
@@ -28,14 +26,13 @@ export default class Client extends EventEmitter {
   private callback: cb
   constructor(
     private socket: SocketIOClient.Socket,
-    { filepath, maxWait = 60, data, highWaterMark, withStats = false }: ClientOptions,
+    { filepath, maxWait = 60, data, highWaterMark }: ClientOptions,
     private eventNamespace = 'akuma'
   ) {
     super()
     this.filepath = filepath
     this.data = data
     this.bytesPerChunk = highWaterMark || this.bytesPerChunk
-    this.withStats = withStats
     this.maxWait = maxWait
   }
   private __getId() {
@@ -86,6 +83,10 @@ export default class Client extends EventEmitter {
       this.__maxWaitMonitor()
     })
   }
+  /**
+   * maximum time to wait for server to
+   * respond before stoping an upload
+   */
   private __maxWaitMonitor() {
     if (this.maxWaitTimer) clearInterval(this.maxWaitTimer)
     this.maxWaitTimer = setInterval(() => {
@@ -94,11 +95,8 @@ export default class Client extends EventEmitter {
         this.__clearMaxWaitMonitor()
         return
       }
-      if (this.maxWaitCounter >= this.maxWait) {
-        this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
-        this.emit('cancel', '[local] Response timeout id=' + this.id)
-        this.__destroy()
-      }
+      if (this.maxWaitCounter >= this.maxWait)
+        this.stop('Response timeout id=' + this.id)
     }, 1000)
   }
   private __clearMaxWaitMonitor() {
@@ -108,6 +106,9 @@ export default class Client extends EventEmitter {
       this.maxWaitCounter = 0
     }
   }
+  /**
+   * more event handler
+   */
   private __onMore = (offset: number) => {
     if (!offset) return
     this.chunks = offset
@@ -115,6 +116,9 @@ export default class Client extends EventEmitter {
     this.__clearMaxWaitMonitor()
     this.__read(offset, toChunk + offset)
   }
+  /**
+   * resume event handler
+   */
   private __onResume = (offset: number | null) => {
     this.isResume = true
     this.__maxWaitMonitor()
@@ -124,20 +128,24 @@ export default class Client extends EventEmitter {
       this.__read(offset, toChunk + offset)
     } else this.__read(0, this.bytesPerChunk)
   }
+  /**
+   * end event handler
+   */
   private __onEnd = ({ total, payload }: any) => {
+    // clear maxWait
+    this.__clearMaxWaitMonitor()
     this.emit('progress', { size: this.filesize, total })
     let data = { size: this.filesize, total, payload }
     this.emit('done', data)
-    this.__clearMaxWaitMonitor()
     if (typeof this.callback === 'function') {
-      if (this.withStats) this.callback(data)
-      else this.callback(...payload)
+      this.callback(...(payload || []))
     }
     this.__destroy()
   }
+  /**
+   * Start initial upload and add event listeners
+   */
   private __start() {
-    this.filesize = statSync(this.filepath).size
-    this.__read(0, this.bytesPerChunk)
     // listen for new request
     this.socket
       .on(`__${this.eventNamespace}_::more::${this.id}__`, this.__onMore)
@@ -145,7 +153,10 @@ export default class Client extends EventEmitter {
       .on(`__${this.eventNamespace}_::resume::${this.id}__`, this.__onResume)
       // listen for end event
       .on(`__${this.eventNamespace}_::end::${this.id}__`, this.__onEnd)
+    this.filesize = statSync(this.filepath).size
+    this.__read(0, this.bytesPerChunk)
   }
+
   public upload(event: string, cb: cb) {
     this.callback = cb
     this.event = event
@@ -155,17 +166,23 @@ export default class Client extends EventEmitter {
         else {
           // get an id from server
           this.__getId()
-          let whenToAbort = addSeconds(new Date(), 30).getTime(),
-            timer = setInterval(() => {
-              if (this.id) clearInterval(timer)
-              else {
-                this.__getId()
-                if (Date.now() >= whenToAbort) {
-                  this.__destroy()
-                  this.emit('cancel', 'Get id timeout id=' + this.id)
-                }
+
+          let whenToAbort = addSeconds(new Date(), 30).getTime()
+          // Start a timer to check if the server have responded with
+          // an id if not cancel the upload
+          let timer = setInterval(() => {
+            if (this.id) clearInterval(timer)
+            else {
+              // resend the get id event every 5 seconds
+              this.__getId()
+              if (Date.now() >= whenToAbort) {
+                this.__destroy()
+                this.emit('cancel', 'Get id timeout')
               }
-            }, 5000)
+            }
+          }, 5000)
+          // listen for ready event which will be emitted
+          // once an id has been recieved and clear the timer
           this.once('ready', () => {
             clearInterval(timer)
             this.__start()
@@ -192,13 +209,15 @@ export default class Client extends EventEmitter {
     this.emit('resume')
     this.socket.emit(`__${this.eventNamespace}_::resume::__`, this.id)
   }
-  public stop() {
+  // Stop and destroy upload
+  public stop<T>(reason?: T) {
     this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
     this.__destroy()
-    this.emit('cancel', 'Stopped id=' + this.id)
+    this.emit('cancel', reason)
   }
   public __destroy() {
-    this.socket.off(`__${this.eventNamespace}_::more::${this.id}__`, this.__onMore)
+    this.socket
+      .off(`__${this.eventNamespace}_::more::${this.id}__`, this.__onMore)
       .off(`__${this.eventNamespace}_::resume::${this.id}__`, this.__onResume)
       .off(`__${this.eventNamespace}_::end::${this.id}__`, this.__onEnd)
     this.data = null

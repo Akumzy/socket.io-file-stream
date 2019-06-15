@@ -4,28 +4,28 @@ interface options {
   file: File
   data?: any
   highWaterMark?: number
-  withStats?: boolean
+  maxWait?: number
 }
 class ClientWeb {
-  private isResume: boolean
   filesize = 0
-  private chunks = 0
   id: string | null = null
-  private bytesPerChunk = 102400 //100kb
   file: File
   data: any
   isPaused: boolean = false
   event: string = ''
   events: Map<string, cb[]> = new Map()
   fileReader: FileReader = new FileReader()
-  private withStats: boolean
+  private bytesPerChunk = 102400 //100kb
+  private chunks = 0
+  private isResume: boolean
   private maxWait: number
   private isFirst = true
   private maxWaitCounter = 0
   private maxWaitTimer: NodeJS.Timeout | null = null
+  private callback: cb
   constructor(
     private socket: SocketIOClient.Socket,
-    { file, data, highWaterMark, withStats = false }: options,
+    { file, data, highWaterMark, maxWait = 60 }: options,
     private eventNamespace = 'akuma'
   ) {
     this.file = file
@@ -33,7 +33,7 @@ class ClientWeb {
     this.socket = socket
     this.data = data
     this.bytesPerChunk = highWaterMark || this.bytesPerChunk
-    this.withStats = withStats
+    this.maxWait = maxWait
   }
   private __getId() {
     this.socket.emit(`__${this.eventNamespace}_::new::id__`, (id: string) => {
@@ -43,11 +43,10 @@ class ClientWeb {
     })
   }
 
-  __read(start: number, end: number) {
+  private __read(start: number, end: number) {
     if (this.isPaused) return
     const slice = this.file.slice(start, end)
     this.fileReader.readAsArrayBuffer(slice)
-
     this.fileReader.onload = () => {
       // avoid resending extra infos after first upload
       if (this.isFirst || this.isResume) {
@@ -60,7 +59,9 @@ class ClientWeb {
           event: this.event
         })
       } else {
-        this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, { chunk: this.fileReader.result })
+        this.socket.emit(`__${this.eventNamespace}_::data::${this.id}__`, {
+          chunk: this.fileReader.result
+        })
       }
       this.emit('progress', { size: this.filesize, total: this.chunks })
       this.isFirst = false
@@ -68,66 +69,85 @@ class ClientWeb {
       this.__maxWaitMonitor()
     }
   }
-  __start(cb: cb) {
-    this.__read(0, this.bytesPerChunk)
-
+  private __onMore = (offset: number) => {
+    if (!offset) return
+    this.chunks = offset
+    let toChunk = Math.min(this.bytesPerChunk, this.filesize - offset)
+    this.__clearMaxWaitMonitor()
+    this.__read(offset, toChunk + offset)
+  }
+  /**
+   * resume event handler
+   */
+  private __onResume = (offset: number | null) => {
+    this.isResume = true
+    this.__maxWaitMonitor()
+    if (typeof offset === 'number') {
+      this.chunks = offset
+      let toChunk = Math.min(this.bytesPerChunk, this.filesize - offset)
+      this.__read(offset, toChunk + offset)
+    } else this.__read(0, this.bytesPerChunk)
+  }
+  /**
+   * end event handler
+   */
+  private __onEnd = ({ total, payload }: any) => {
+    // clear maxWait
+    this.__clearMaxWaitMonitor()
+    this.emit('progress', { size: this.filesize, total })
+    let data = { size: this.filesize, total, payload }
+    this.emit('done', data)
+    if (typeof this.callback === 'function') {
+      this.callback(...(payload || []))
+    }
+    this.__destroy()
+  }
+  private __start() {
     // listen for new request
     this.socket
-      .on(`__${this.eventNamespace}_::more::${this.id}__`, (chunks: number) => {
-        if (!chunks) return
-        this.chunks = chunks
-        let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-        this.__clearMaxWaitMonitor()
-        this.__read(chunks, toChunk + chunks)
-      })
+      .on(`__${this.eventNamespace}_::more::${this.id}__`, this.__onMore)
       // listen for resume request
-      .on(`__${this.eventNamespace}_::resume::${this.id}__`, (chunks: number | null) => {
-        this.isResume = true
-        this.__maxWaitMonitor()
-        if (typeof chunks === 'number') {
-          this.chunks = chunks
-          let toChunk = Math.min(this.bytesPerChunk, this.filesize - chunks)
-          this.__read(chunks, toChunk + chunks)
-        } else this.__read(0, this.bytesPerChunk)
-      })
+      .on(`__${this.eventNamespace}_::resume::${this.id}__`, this.__onResume)
       // listen for end event
-      .on(`__${this.eventNamespace}_::end::${this.id}__`, ({ total, payload }: any) => {
-        this.emit('progress', { size: this.filesize, total })
-        let data = { size: this.filesize, total, payload }
-        this.emit('done', data)
-        this.__clearMaxWaitMonitor()
-        if (typeof cb === 'function') {
-          if (this.withStats) cb(data)
-          else cb(...payload)
-        }
-        this.__destroy()
-      })
+      .on(`__${this.eventNamespace}_::end::${this.id}__`, this.__onEnd)
+    this.__read(0, this.bytesPerChunk)
   }
-  upload(event: string, cb: cb) {
+  public upload(event: string, cb: cb) {
+    this.callback = cb
     this.event = event
-    if (this.id) this.__start(cb)
+    if (this.id) this.__start()
     else {
       // get an id from server
       this.__getId()
-      let whenToAbort = addSeconds(new Date(), 30).getTime(),
-        timer = setInterval(() => {
-          if (this.id) clearInterval(timer)
-          else {
-            this.__getId()
-            if (Date.now() >= whenToAbort) {
-              this.__destroy()
-              this.emit('cancel', 'Get id timeout id=' + this.id)
-            }
+
+      let whenToAbort = addSeconds(new Date(), 30).getTime()
+      // Start a timer to check if the server have responded with
+      // an id if not cancel the upload
+      let timer = setInterval(() => {
+        if (this.id) clearInterval(timer)
+        else {
+          // resend the get id event every 5 seconds
+          this.__getId()
+          if (Date.now() >= whenToAbort) {
+            this.__destroy()
+            this.emit('cancel', 'Get id timeout')
           }
-        }, 5000)
+        }
+      }, 5000)
+      // listen for ready event which will be emitted
+      // once an id has been recieved and clear the timer
       this.on('ready', () => {
         clearInterval(timer)
-        this.__start(cb)
+        this.__start()
       })
     }
 
     return this
   }
+  /**
+   * maximum time to wait for server to
+   * respond before stoping an upload
+   */
   private __maxWaitMonitor() {
     if (this.maxWaitTimer) clearInterval(this.maxWaitTimer)
     this.maxWaitTimer = setInterval(() => {
@@ -136,11 +156,8 @@ class ClientWeb {
         this.__clearMaxWaitMonitor()
         return
       }
-      if (this.maxWaitCounter >= this.maxWait) {
-        this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
-        this.emit('cancel', '[local] Response timeout id=' + this.id)
-        this.__destroy()
-      }
+      if (this.maxWaitCounter >= this.maxWait)
+        this.stop('Response timeout id=' + this.id)
     }, 1000)
   }
   private __clearMaxWaitMonitor() {
@@ -150,6 +167,33 @@ class ClientWeb {
       this.maxWaitCounter = 0
     }
   }
+
+  public pause() {
+    this.isPaused = true
+    this.emit('pause')
+  }
+  public resume() {
+    if (!this.id) return
+    this.isPaused = false
+    this.emit('resume')
+    this.socket.emit(`__${this.eventNamespace}_::resume::__`, this.id)
+  }
+  // Stop and destroy upload
+  public stop<T>(reason?: T) {
+    this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
+    this.__destroy()
+    this.emit('cancel', reason)
+  }
+  public __destroy() {
+    this.socket
+      .off(`__${this.eventNamespace}_::more::${this.id}__`, this.__onMore)
+      .off(`__${this.eventNamespace}_::resume::${this.id}__`, this.__onResume)
+      .off(`__${this.eventNamespace}_::end::${this.id}__`, this.__onEnd)
+    this.data = null
+    this.id = null
+    this.__clearMaxWaitMonitor()
+  }
+
   on(eventName: string, cb: cb) {
     if (!this.events.get(eventName)) {
       this.events.set(eventName, [cb])
@@ -166,31 +210,6 @@ class ClientWeb {
         cb.call(null, data)
       })
     }
-  }
-
-  public pause() {
-    this.isPaused = true
-    this.emit('pause')
-  }
-  public resume() {
-    if (!this.id) return
-    this.isPaused = false
-    this.emit('resume')
-    this.socket.emit(`__${this.eventNamespace}_::resume::__`, this.id)
-  }
-  public stop() {
-    this.socket.emit(`__${this.eventNamespace}_::stop::__`, this.id)
-    this.__destroy()
-    this.emit('cancel', 'Stopped id=' + this.id)
-  }
-  public __destroy() {
-    this.socket.off(`__${this.eventNamespace}_::more::${this.id}__`, () => {})
-    this.socket.off(`__${this.eventNamespace}_::data::${this.id}__`, () => {})
-    this.socket.off(`__${this.eventNamespace}_::resume::${this.id}__`, () => {})
-    this.socket.off(`__${this.eventNamespace}_::end::${this.id}__`, () => {})
-    this.data = null
-    this.id = null
-    this.__clearMaxWaitMonitor()
   }
 }
 export default ClientWeb

@@ -31,7 +31,12 @@ interface OnDataPayload {
 }
 export type IStream = Subject<StreamPayload>
 type Handler = (
-  { stream, data, ready, id }: { stream: IStream; data: any; ready?: () => void; id: string },
+  {
+    stream,
+    data,
+    ready,
+    id
+  }: { stream: IStream; data: any; ready?: () => void; id: string },
   ack?: cb
 ) => void
 // Store all the record out the Server class to persist the state
@@ -56,7 +61,10 @@ export default class Server {
       let record = this.records.get(id)
       if (record) {
         this.records.set(id, { ...record, active: false })
-        this.io.emit(`__${this.eventNamespace}_::resume::${id}__`, record.uploadedChunks)
+        this.io.emit(
+          `__${this.eventNamespace}_::resume::${id}__`,
+          record.uploadedChunks
+        )
         let streamInstance = this.streams.get(id)
         if (!streamInstance) {
           this.__createNew(id)
@@ -99,7 +107,8 @@ export default class Server {
   }
 
   public on(event: string, handler: Handler) {
-    if (typeof event !== 'string') throw new Error(`${event} must be typeof string`)
+    if (typeof event !== 'string')
+      throw new Error(`${event} must be typeof string`)
     if (!this.handlers.has(event)) {
       this.handlers.set(event, handler)
     }
@@ -121,114 +130,136 @@ export default class Server {
       isReady = true
     }
 
-    this.io.on(`__${this.eventNamespace}_::data::${id}__`, async ({ chunk, info, event }: OnDataPayload) => {
-      if (!this.cleaner) this.__cleaner()
-      if (info) _info = info
-      let //
-        uploadedChunks = 0,
-        streamInstance = this.streams.get(id),
-        record = this.records.get(id)
-      if (streamInstance) {
-        if (record) {
-          record.active = true
-          let newRecord = { ...record, expire: this.__addTime(record.expire) }
-          record = newRecord
-          this.records.set(id, newRecord)
-        }
-      } else {
-        if (record) {
-          this.records.set(id, {
-            ...record,
-            dirty: false,
-            expire: this.__addTime(new Date(), true)
-          })
+    this.io.on(
+      `__${this.eventNamespace}_::data::${id}__`,
+      async ({ chunk, info, event }: OnDataPayload) => {
+        if (!this.cleaner) this.__cleaner()
+        if (info) _info = info
+        let //
+          uploadedChunks = 0,
+          streamInstance = this.streams.get(id),
+          record = this.records.get(id)
+        if (streamInstance) {
+          if (record) {
+            record.active = true
+            let newRecord = { ...record, expire: this.__addTime(record.expire) }
+            record = newRecord
+            this.records.set(id, newRecord)
+          }
         } else {
-          this.records.set(id, {
-            event,
-            uploadedChunks: 0,
-            paused: false,
-            dirty: false,
-            expire: this.__addTime(new Date(), true),
-            id
-          })
+          if (record) {
+            this.records.set(id, {
+              ...record,
+              dirty: false,
+              expire: this.__addTime(new Date(), true)
+            })
+          } else {
+            this.records.set(id, {
+              event,
+              uploadedChunks: 0,
+              paused: false,
+              dirty: false,
+              expire: this.__addTime(new Date(), true),
+              id
+            })
+          }
+          this.streams.set(id, stream)
+          record = this.records.get(id) as UploadRecord
+          streamInstance = stream
         }
-        this.streams.set(id, stream)
-        record = this.records.get(id) as UploadRecord
-        streamInstance = stream
-      }
-      let streamPayload: StreamPayload
-      if (record) {
-        let flag: string | undefined
-        if (!resume && isFirst) {
-          flag = 'w'
-        }
-        // Invoke this handler once by checking if
-        // it's record instance active field is truthy
-        if (!record.active) {
-          let handler = this.handlers.get(record.event)
-          const self = this
-          // check if this has handler
-          if (handler) {
-            // check if this just resume of an disconnected connection
-            const callHandler = (handler: Handler, streamInstance: IStream) => {
-              handler({ stream: streamInstance, data: info.data, ready: whenReady, id }, (...ack: any[]) => {
-                let r = self.records.get(id)
-                if (r)
-                  self.io.emit(`__${this.eventNamespace}_::end::${id}__`, {
-                    payload: ack,
-                    total: r.uploadedChunks
-                  })
-                this.__done(id)
+        let streamPayload: StreamPayload
+        if (record) {
+          let flag: string | undefined
+          if (!resume && isFirst) {
+            flag = 'w'
+          }
+          // Invoke this handler once by checking if
+          // it's record instance active field is truthy
+          if (!record.active) {
+            let handler = this.handlers.get(record.event)
+            const self = this
+            // check if this has handler
+            if (handler) {
+              // check if this just resume of an disconnected connection
+              const callHandler = (
+                handler: Handler,
+                streamInstance: IStream
+              ) => {
+                handler(
+                  {
+                    stream: streamInstance,
+                    data: info.data,
+                    ready: whenReady,
+                    id
+                  },
+                  (...ack: any[]) => {
+                    let r = self.records.get(id)
+                    if (r)
+                      self.io.emit(`__${this.eventNamespace}_::end::${id}__`, {
+                        payload: ack,
+                        total: r.uploadedChunks
+                      })
+                    this.__done(id)
+                  }
+                )
+              }
+              if (resume) {
+                // check if this has an acknowledgement
+                callHandler(handler, streamInstance)
+              } else {
+                callHandler(handler, streamInstance)
+              }
+              this.records.set(id, {
+                ...record,
+                dirty: true,
+                uploadedChunks,
+                active: true
               })
             }
-            if (resume) {
-              // check if this has an acknowledgement
-             callHandler(handler, streamInstance)
-            } else {
-             callHandler(handler, streamInstance)
-            }
-            this.records.set(id, { ...record, dirty: true, uploadedChunks, active: true })
+          }
+          uploadedChunks = record.uploadedChunks + chunk.length
+          this.records.set(id, { ...record, uploadedChunks })
+          streamPayload = {
+            buffer: Buffer.from(chunk),
+            fileSize: _info.size,
+            uploadedChunks: record.uploadedChunks,
+            flag
+          }
+          /* This is just make show for any weild reasons
+           * the stream observer most have a subscriber
+           * before piping buffers to it
+           */
+          if (isFirst) {
+            await new Promise(res => {
+              let timer = setInterval(() => {
+                if (isReady) {
+                  clearInterval(timer)
+                  res(true)
+                }
+              }, 500)
+            })
+            isFirst = false
+          }
+
+          /**
+           * Check if transfered buffers are equal to
+           * file size then emit end else request for more
+           */
+
+          if (uploadedChunks < _info.size) {
+            streamInstance.next(streamPayload)
+            this.io.emit(
+              `__${this.eventNamespace}_::more::${id}__`,
+              uploadedChunks
+            )
+          } else {
+            streamInstance.next(streamPayload)
+            sleep(100)
+            streamInstance.complete()
           }
         }
-        uploadedChunks = record.uploadedChunks + chunk.length
-        this.records.set(id, { ...record, uploadedChunks })
-        streamPayload = {
-          buffer: Buffer.from(chunk),
-          fileSize: _info.size,
-          uploadedChunks: record.uploadedChunks,
-          flag
-        }
-        /* This is just make show for any weild reasons
-         * the stream observer most have a subscriber
-         * before piping buffers to it
-         */
-        if (isFirst) {
-          await new Promise(res => {
-            let timer = setInterval(() => {
-              if (isReady) {
-                clearInterval(timer)
-                res(true)
-              }
-            }, 500)
-          })
-          isFirst = false
-        }
-
-        /**
-         * Check if transfered buffers are equal to
-         * file size then emit end else request for more
-         */
-
-        if (uploadedChunks < _info.size) {
-          streamInstance.next(streamPayload)
-          this.io.emit(`__${this.eventNamespace}_::more::${id}__`, uploadedChunks)
-        } else {
-          streamInstance.next(streamPayload)
-          sleep(100)
-          streamInstance.complete()
-        }
       }
-    })
+    )
   }
   private __cleaner() {
     this.cleaner = setInterval(() => {
@@ -242,7 +273,9 @@ export default class Server {
               stream.error('Reconnect timeout')
               this.__done(val.id)
             }
-            if (this.cleaner) clearInterval(this.cleaner)
+            if (this.records.size) {
+              if (this.cleaner) clearInterval(this.cleaner)
+            }
           }
         })
       } else {
