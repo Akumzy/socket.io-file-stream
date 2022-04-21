@@ -13,7 +13,7 @@ This package has three components
   Web is for browsers based app the component uses FileReader api to read file blob.
 
 - ### Server:
-- 
+
   This component handlers all the request from both `Web` and `Client`
 
 ```js
