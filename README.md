@@ -6,13 +6,14 @@ This package has three components
 
 - ### Client:
 
-  Only works on node environment bacause it's uses node `fs.creatReadStream` which makes sense for electron applications.
+  Only works on node environment because it's uses node `fs.creatReadStream` which makes sense for electron applications.
 
 - ### Web:
 
-  Web is for browsers baseds app the component uses FileReader api to read file blob.
+  Web is for browsers based app the component uses FileReader api to read file blob.
 
 - ### Server:
+
   This component handlers all the request from both `Web` and `Client`
 
 ```js
@@ -100,4 +101,4 @@ io.on('connection', socket => {
 })
 ```
 
-Please check the <a href="https://github.com/Akumzy/socket.io-file-stream/tree/master/example">example </a> folder for clue on how to use package until I'm able to document this package well
+Please check the <a href="https://github.com/Akumzy/socket.io-file-stream/tree/master/example">example </a> folder for clues on how to use the package until I'm able to document this package well
